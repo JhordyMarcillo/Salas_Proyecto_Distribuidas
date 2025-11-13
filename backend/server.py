@@ -2,7 +2,8 @@ import os
 import jwt
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, request
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -16,12 +17,16 @@ JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "20"))
 app = Flask(__name__)
 app.config["MONGO_URI"] = MONGO_URI
 
+# Allow cross-origin requests from the frontend dev server
+CORS(app)
+
 mongo = PyMongo(app)
 bcrypt = Bcrypt(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 users = mongo.db.users
 messages = mongo.db.messages
+rooms = mongo.db.rooms
 
 def create_token(username: str):
     exp = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
@@ -248,6 +253,59 @@ def ws_disconnect():
 @app.route("/")
 def index():
     return "<h3>Servidor WebSocket (Flask-SocketIO). Use eventos WS para registrar/login/join/leave/send_message.</h3>"
+
+
+@app.route('/rooms', methods=['GET'])
+def list_rooms():
+    # listado de salas definidas en la colección 'rooms'
+    docs = list(rooms.find({}).sort('created_at', 1))
+    out = []
+    for d in docs:
+        name = d.get('name')
+        members = users.count_documents({'current_room': name})
+        out.append({
+            'name': name,
+            'description': d.get('description'),
+            'created_at': d.get('created_at').isoformat() if d.get('created_at') else None,
+            'members': members
+        })
+    return jsonify({'rooms': out})
+
+
+@app.route('/rooms', methods=['POST'])
+def create_room():
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    description = data.get('description') or ''
+    if not name:
+        return jsonify({'msg': 'name requerido'}), 400
+
+    if rooms.find_one({'name': name}):
+        return jsonify({'msg': 'room ya existe'}), 400
+
+    doc = {
+        'name': name,
+        'description': description,
+        'created_at': datetime.utcnow()
+    }
+    rooms.insert_one(doc)
+    return jsonify({'msg': 'room creado', 'room': {'name': name, 'description': description}}), 201
+
+
+@app.route('/rooms/<room>/messages')
+def room_messages(room):
+    # Devuelve los últimos 100 mensajes de la sala
+    docs = list(messages.find({"room": room}).sort("timestamp", -1).limit(100))
+    # invertir para enviar desde el más antiguo al más nuevo
+    docs = list(reversed(docs))
+    out = []
+    for d in docs:
+        out.append({
+            "username": d.get("username"),
+            "msg": d.get("msg"),
+            "timestamp": d.get("timestamp").isoformat() if d.get("timestamp") else None
+        })
+    return jsonify({"messages": out})
 
 if __name__ == "__main__":
     socketio.run(app, debug=True, host="0.0.0.0", port=5000)

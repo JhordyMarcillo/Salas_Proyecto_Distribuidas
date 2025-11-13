@@ -1,32 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { LogOut, MessageSquare, Search, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
+import { apiUrl } from "@/lib/socket";
 
 interface Room {
-  id: string;
   name: string;
-  description: string;
-  members: number;
+  description?: string;
+  created_at?: string;
+  members?: number;
 }
-
-const mockRooms: Room[] = [
-  { id: "1", name: "General Chat", description: "Welcome to the main lobby", members: 42 },
-  { id: "2", name: "Tech Talk", description: "Discuss latest in technology", members: 28 },
-  { id: "3", name: "Random", description: "Talk about anything", members: 56 },
-  { id: "4", name: "Gaming", description: "For gaming enthusiasts", members: 34 },
-];
 
 const Lobby = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-  const [rooms] = useState<Room[]>(mockRooms);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const filteredRooms = rooms.filter(room =>
-    room.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredRooms = rooms.filter((room) =>
+    (room.name || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleLogout = () => {
@@ -34,8 +30,42 @@ const Lobby = () => {
     navigate("/login");
   };
 
-  const handleCreateRoom = () => {
-    toast.info("Create room feature coming soon!");
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${apiUrl}/rooms`);
+      const data = await res.json();
+      setRooms(data.rooms || []);
+    } catch (e) {
+      toast.error("Error fetching rooms");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRooms();
+  }, []);
+
+  const handleCreateRoom = async () => {
+    const name = newRoomName.trim();
+    if (!name) return toast.error("Nombre de sala requerido");
+    try {
+      const res = await fetch(`${apiUrl}/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return toast.error(data.msg || "Error creando sala");
+      }
+      toast.success("Sala creada");
+      setNewRoomName("");
+      fetchRooms();
+    } catch (e) {
+      toast.error("Error creando sala");
+    }
   };
 
   return (
@@ -83,11 +113,23 @@ const Lobby = () => {
             />
           </div>
 
+          <div className="flex gap-2 items-center">
+            <Input
+              placeholder="New room name"
+              value={newRoomName}
+              onChange={(e) => setNewRoomName(e.target.value)}
+              className="flex-1 bg-card border-input"
+            />
+            <Button onClick={handleCreateRoom} className="glow-button bg-primary hover:bg-accent text-primary-foreground">
+              Create
+            </Button>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             {filteredRooms.map((room) => (
               <Card
-                key={room.id}
-                onClick={() => navigate(`/sala/${room.id}`)}
+                key={room.name}
+                onClick={() => navigate(`/sala/${encodeURIComponent(room.name)}`)}
                 className="p-6 bg-card border-border hover:border-primary/50 transition-all cursor-pointer hover:scale-[1.02] duration-300"
               >
                 <div className="space-y-3">
@@ -95,7 +137,7 @@ const Lobby = () => {
                   <p className="text-muted-foreground text-sm">{room.description}</p>
                   <div className="flex items-center gap-2 text-primary">
                     <Users className="w-4 h-4" />
-                    <span className="text-sm font-medium">{room.members} members</span>
+                    <span className="text-sm font-medium">{room.members ?? 0} members</span>
                   </div>
                 </div>
               </Card>

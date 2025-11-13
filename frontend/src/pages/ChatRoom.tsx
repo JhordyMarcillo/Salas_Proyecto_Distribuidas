@@ -21,7 +21,7 @@ const ChatRoom = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
 
-  const roomName = id === "1" ? "General Chat" : `Room ${id}`;
+  const roomName = id ? decodeURIComponent(id) : "Room";
 
   // conexión a backend via Socket.IO
   useEffect(() => {
@@ -32,7 +32,7 @@ const ChatRoom = () => {
     // cargar historial via REST
     import("@/lib/socket").then(({ apiUrl, initSocket }) => {
       // obtener mensajes del historial
-      fetch(`${apiUrl}/rooms/${room}/messages`)
+      fetch(`${apiUrl}/rooms/${encodeURIComponent(room)}/messages`)
         .then((r) => r.json())
         .then((data) => {
           if (!mounted) return;
