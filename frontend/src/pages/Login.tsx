@@ -13,12 +13,60 @@ const Login = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      toast.success("Login successful!");
-      navigate("/lobby");
-    } else {
+    if (!email || !password) {
       toast.error("Please fill in all fields");
+      return;
     }
+
+    // usar socket.io para autenticación (envía evento "login")
+    import("@/lib/socket").then(({ initSocket }) => {
+      const sock = initSocket();
+
+      // manejar respuestas
+      const onSuccess = (d: any) => {
+        if (d && d.token) {
+          localStorage.setItem("chat_token", d.token);
+          // guardar usuario para marcar mensajes propios
+          localStorage.setItem("chat_user", email);
+          // reconectar el socket con token para handshake
+          try { initSocket(d.token); } catch (e) { /* ignore */ }
+          toast.success("Login successful!");
+          navigate("/lobby");
+        } else {
+          toast.error("Login: respuesta inválida del servidor");
+        }
+      };
+
+      const onError = (d: any) => {
+        toast.error(d && d.msg ? d.msg : "Login failed");
+      };
+
+      sock.once("login_success", onSuccess);
+      sock.once("login_error", onError);
+
+      // si el socket no está conectado aún, esperar al evento connect
+      if (!sock.connected) {
+        const onConnect = () => {
+          try {
+            sock.emit("login", { username: email, password });
+          } catch (e) {
+            toast.error("Error al emitir login: " + String(e));
+          }
+        };
+        sock.once("connect", onConnect);
+        sock.once("connect_error", (err: any) => {
+          toast.error("No se pudo conectar al servidor: " + (err && err.message ? err.message : String(err)));
+        });
+      } else {
+        try {
+          sock.emit("login", { username: email, password });
+        } catch (e) {
+          toast.error("Error al emitir login: " + String(e));
+        }
+      }
+    }).catch((e) => {
+      toast.error("No se pudo inicializar socket: " + String(e));
+    });
   };
 
   return (

@@ -14,21 +14,72 @@ interface Message {
   isOwn: boolean;
 }
 
-const mockMessages: Message[] = [
-  { id: "1", user: "Alice", text: "Hey everyone!", timestamp: new Date(Date.now() - 300000), isOwn: false },
-  { id: "2", user: "You", text: "Hi Alice! How's it going?", timestamp: new Date(Date.now() - 240000), isOwn: true },
-  { id: "3", user: "Bob", text: "Great to be here!", timestamp: new Date(Date.now() - 180000), isOwn: false },
-  { id: "4", user: "You", text: "Welcome Bob!", timestamp: new Date(Date.now() - 120000), isOwn: true },
-];
-
 const ChatRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
 
   const roomName = id === "1" ? "General Chat" : `Room ${id}`;
+
+  // conexión a backend via Socket.IO
+  useEffect(() => {
+    let mounted = true;
+    const room = id ?? "default";
+    const token = localStorage.getItem("chat_token");
+
+    // cargar historial via REST
+    import("@/lib/socket").then(({ apiUrl, initSocket }) => {
+      // obtener mensajes del historial
+      fetch(`${apiUrl}/rooms/${room}/messages`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!mounted) return;
+          const msgs = (data.messages || []).map((m: any, idx: number) => ({
+            id: String(idx) + (m.timestamp || ""),
+            user: m.username || "",
+            text: m.msg || "",
+            timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            isOwn: (m.username || "") === (localStorage.getItem("chat_user") || "You")
+          }));
+          setMessages(msgs);
+        })
+        .catch(() => {
+          // si falla, mantener vacío
+        });
+
+      const sock = initSocket(token ?? undefined);
+
+      // manejar nuevos mensajes
+      const onMessage = (d: any) => {
+        if (!mounted) return;
+        if (d && d.room && String(d.room) === String(room)) {
+          const m: Message = {
+            id: Date.now().toString(),
+            user: d.username || "",
+            text: d.msg || "",
+            timestamp: d.timestamp ? new Date(d.timestamp) : new Date(),
+            isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
+          };
+          setMessages((prev) => [...prev, m]);
+        }
+      };
+
+      sock.on("message", onMessage);
+
+      // Unirse a la sala al montar
+      sock.emit("join", { token: token, room });
+
+      return () => {
+        mounted = false;
+        try {
+          sock.emit("leave", { token: token, room });
+        } catch (e) {}
+        sock.off("message", onMessage);
+      };
+    });
+  }, [id, toast]);
 
   // Notificación al entrar a la sala
   useEffect(() => {
@@ -49,33 +100,27 @@ const ChatRoom = () => {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputMessage.trim()) {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        user: "You",
-        text: inputMessage,
-        timestamp: new Date(),
-        isOwn: true,
-      };
-      setMessages([...messages, newMessage]);
-      setInputMessage("");
+      const room = id ?? "default";
+      const token = localStorage.getItem("chat_token");
+      // emitir al servidor
+      import("@/lib/socket").then(({ getSocket }) => {
+        const s = getSocket();
+        try {
+          s?.emit("send_message", { token: token, room: room, msg: inputMessage });
+        } catch (e) {
+          // si no hay socket, mostrar localmente
+          const newMessage: Message = {
+            id: Date.now().toString(),
+            user: "You",
+            text: inputMessage,
+            timestamp: new Date(),
+            isOwn: true,
+          };
+          setMessages((prev) => [...prev, newMessage]);
+        }
+      });
 
-      // Simular mensaje de otro usuario después de 2 segundos
-      setTimeout(() => {
-        const otherMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          user: "Alice",
-          text: "¡Recibí tu mensaje!",
-          timestamp: new Date(),
-          isOwn: false,
-        };
-        setMessages(prev => [...prev, otherMessage]);
-        
-        // Notificación de mensaje nuevo
-        toast({
-          title: "Nuevo mensaje",
-          description: `${otherMessage.user}: ${otherMessage.text}`,
-        });
-      }, 2000);
+      setInputMessage("");
     }
   };
 

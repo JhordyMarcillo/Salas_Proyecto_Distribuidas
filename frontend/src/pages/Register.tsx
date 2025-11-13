@@ -15,19 +15,40 @@ const Register = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name || !email || !password || !confirmPassword) {
       toast.error("Please fill in all fields");
       return;
     }
-    
+
     if (password !== confirmPassword) {
       toast.error("Passwords don't match");
       return;
     }
-    
-    toast.success("Account created successfully!");
-    navigate("/login");
+
+    // Usar socket para registrar usuario en backend
+    import("@/lib/socket").then(({ initSocket }) => {
+      // Inicializar socket y reconectar con token si es devuelto
+      const sock = initSocket();
+      sock.once("register_success", (d: any) => {
+        if (d && d.token) {
+          localStorage.setItem("chat_token", d.token);
+          localStorage.setItem("chat_user", email);
+          // reconectar el socket con el token en handshake
+          try { initSocket(d.token); } catch (e) { /* ignore */ }
+          toast.success("Account created successfully!");
+          navigate("/lobby");
+        } else {
+          toast.error("Registro: respuesta inválida del servidor");
+        }
+      });
+      sock.once("register_error", (d: any) => {
+        toast.error(d && d.msg ? d.msg : "Register failed");
+      });
+
+      // usamos el campo email como username en este proyecto
+      sock.emit("register", { username: email, password });
+    });
   };
 
   return (
