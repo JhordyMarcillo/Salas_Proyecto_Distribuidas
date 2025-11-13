@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Cliente de prueba Socket.IO (Register / Login / Rooms)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 18px; background:#f6f8fa; color:#111; }
+    .container { max-width: 980px; margin: 0 auto; background: white; padding: 18px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+    h1 { margin: 0 0 12px 0; font-size: 20px; }
+    .row { display:flex; gap:12px; margin-bottom:10px; align-items:center; flex-wrap:wrap; }
+    input, button, select, textarea { padding:8px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; }
+    button { cursor:pointer; background:#0b5fff; color:white; border:none; }
+    button.secondary { background:#6b7280; }
+    label { font-size:13px; color:#374151; }
+    .col { flex:1; min-width:200px; }
+    .small { font-size:13px; color:#6b7280; }
+    #log { height:320px; background:#0b1220; color:#e6eef8; padding:12px; overflow:auto; border-radius:6px; font-family: monospace; font-size:13px; }
+    .status { padding:6px 8px; border-radius:6px; display:inline-block; margin-left:6px; font-weight:600; }
+    .connected { background:#dcfce7; color:#065f46; }
+    .disconnected { background:#fee2e2; color:#991b1b; }
+    .token { font-family: monospace; font-size:12px; background:#f3f4f6; padding:6px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Cliente de prueba Socket.IO — Registro / Login / Salas</h1>
+
+    <div class="row">
+      <label>Server URL</label>
+      <input id="serverUrl" class="col" value="http://localhost:5000" />
+      <button id="btnConnect">Conectar</button>
+      <button id="btnDisconnect" class="secondary">Desconectar</button>
+      <div id="connStatus" class="status disconnected">Desconectado</div>
+    </div>
+
+    <hr/>
+
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:280px;">
+        <h3>Registro / Login</h3>
+        <div class="row">
+          <input id="regUser" placeholder="usuario" />
+          <input id="regPass" placeholder="contraseña" type="password" />
+          <button id="btnRegister">Registrar</button>
+        </div>
+        <div class="row">
+          <input id="logUser" placeholder="usuario" />
+          <input id="logPass" placeholder="contraseña" type="password" />
+          <button id="btnLogin">Login</button>
+        </div>
+        <div class="row small">
+          <label>Token actual:</label>
+          <div id="tokenBox" class="token">ninguno</div>
+          <button id="btnClearToken" class="secondary">Borrar</button>
+        </div>
+        <div class="row small">
+          <label><input type="checkbox" id="useHandshake" /> Usar token en handshake (reconectar)</label>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:300px;">
+        <h3>Salas y Mensajes</h3>
+        <div class="row">
+          <input id="roomName" placeholder="nombre sala" />
+          <button id="btnJoin">Unirse</button>
+          <button id="btnLeave" class="secondary">Salir</button>
+        </div>
+        <div class="row">
+          <input id="msgText" placeholder="mensaje..." class="col" />
+          <button id="btnSend">Enviar</button>
+        </div>
+        <div class="row small">
+          <label>Usuario conectado en sala: </label>
+          <div id="currentRoom" class="token">ninguna</div>
+        </div>
+      </div>
+    </div>
+
+    <hr/>
+
+    <div>
+      <h3>Log / Mensajes</h3>
+      <div id="log"></div>
+      <div style="margin-top:10px;">
+        <button id="btnClearLog" class="secondary">Limpiar Log</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let socket = null;
+    let jwtToken = null;
+    let connected = false;
+    let currentRoom = null;
+
+    const $ = id => document.getElementById(id);
+    const logEl = $('log');
+
+    function log(...args) {
+      const line = [new Date().toLocaleTimeString(), ...args].join(' ');
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...args);
+    }
+
+    function setConnState(state) {
+      connected = state === 'connected';
+      const el = $('connStatus');
+      if (connected) {
+        el.textContent = 'Conectado';
+        el.className = 'status connected';
+      } else {
+        el.textContent = 'Desconectado';
+        el.className = 'status disconnected';
+      }
+    }
+
+    function setToken(t) {
+      jwtToken = t;
+      $('tokenBox').textContent = t ? t : 'ninguno';
+    }
+
+    function setCurrentRoom(r) {
+      currentRoom = r;
+      $('currentRoom').textContent = r ? r : 'ninguna';
+    }
+
+    function makeSocket(auth) {
+      if (socket) {
+        try { socket.disconnect(); } catch(e) {}
+        socket = null;
+      }
+      const url = $('serverUrl').value.trim() || 'http://localhost:5000';
+
+      socket = io(url, {
+        transports: ["websocket","polling"],
+        auth: auth || {},
+        autoConnect: true,
+        reconnectionAttempts: 3,
+      });
+
+      socket.on('connect', () => {
+        setConnState('connected');
+        log('[connect] conectado con id', socket.id);
+      });
+
+      socket.on('connect_error', (err) => {
+        setConnState('disconnected');
+        log('[connect_error]', err && err.message ? err.message : err);
+      });
+
+      socket.on('disconnect', (reason) => {
+        setConnState('disconnected');
+        log('[disconnect] motivo:', reason);
+
+        setCurrentRoom(null);
+      });
+
+      socket.on('status', d => log('[status]', d && d.msg ? d.msg : d));
+      socket.on('register_success', d => {
+        log('[register_success]', d);
+        if (d && d.token) { setToken(d.token); localStorage.setItem('chat_token', d.token); }
+      });
+      socket.on('register_error', d => log('[register_error]', d));
+      socket.on('login_success', d => {
+        log('[login_success]', d);
+        if (d && d.token) { setToken(d.token); localStorage.setItem('chat_token', d.token); }
+      });
+      socket.on('login_error', d => log('[login_error]', d));
+      socket.on('join_success', d => {
+        log('[join_success]', d);
+        if (d && d.room) setCurrentRoom(d.room);
+      });
+      socket.on('join_error', d => log('[join_error]', d));
+      socket.on('leave_success', d => {
+        log('[leave_success]', d);
+        if (d && d.room && d.room === currentRoom) setCurrentRoom(null);
+      });
+      socket.on('leave_error', d => log('[leave_error]', d));
+      socket.on('message', d => {
+        log(`[message] [${d.room}] ${d.username}: ${d.msg}`);
+      });
+      socket.on('msg_error', d => log('[msg_error]', d));
+      socket.on('error', d => log('[error]', d));
+    }
+
+    const stored = localStorage.getItem('chat_token');
+    if (stored) setToken(stored);
+
+    $('btnConnect').addEventListener('click', () => {
+      const useHandshake = $('useHandshake').checked;
+      if (useHandshake && jwtToken) {
+        makeSocket({ token: jwtToken });
+      } else {
+        makeSocket(null);
+      }
+    });
+
+    $('btnDisconnect').addEventListener('click', () => {
+      if (socket) {
+        socket.disconnect();
+        socket = null;
+      }
+      setConnState('disconnected');
+      log('[manual] desconectado por usuario');
+    });
+
+    $('btnRegister').addEventListener('click', () => {
+      const u = $('regUser').value.trim();
+      const p = $('regPass').value;
+      if (!u || !p) return alert('Usuario y password requeridos');
+      if (!socket || !socket.connected) { log('No conectado: conecta primero'); return; }
+      socket.emit('register', { username: u, password: p });
+      log('[emit] register', u);
+    });
+
+    $('btnLogin').addEventListener('click', () => {
+      const u = $('logUser').value.trim();
+      const p = $('logPass').value;
+      if (!u || !p) return alert('Usuario y password requeridos');
+      if (!socket || !socket.connected) { log('No conectado: conecta primero'); return; }
+      socket.emit('login', { username: u, password: p });
+      log('[emit] login', u);
+    });
+
+    $('btnJoin').addEventListener('click', () => {
+      const room = $('roomName').value.trim();
+      if (!room) return alert('Room requerido');
+      if (!socket || !socket.connected) { log('No conectado: conecta primero'); return; }
+      if (!$('useHandshake').checked) {
+        if (!jwtToken) return alert('Necesitas token (haz login) o activa handshake');
+        socket.emit('join', { token: jwtToken, room });
+      } else {
+        socket.emit('join', { token: jwtToken, room });
+      }
+      log('[emit] join', room);
+    });
+
+    $('btnLeave').addEventListener('click', () => {
+      const room = $('roomName').value.trim();
+      if (!room) return alert('Room requerido');
+      if (!socket || !socket.connected) { log('No conectado: conecta primero'); return; }
+      if (!jwtToken) return alert('Necesitas token (haz login) o activa handshake');
+      socket.emit('leave', { token: jwtToken, room });
+      log('[emit] leave', room);
+    });
+
+    $('btnSend').addEventListener('click', () => {
+      const room = $('roomName').value.trim();
+      const msg = $('msgText').value.trim();
+      if (!room || !msg) return alert('Room y mensaje requeridos');
+      if (!socket || !socket.connected) { log('No conectado: conecta primero'); return; }
+      if (!jwtToken) return alert('Necesitas token (haz login) o activa handshake');
+      socket.emit('send_message', { token: jwtToken, room, msg });
+      log('[emit] send_message', msg);
+      $('msgText').value = '';
+    });
+
+    $('btnClearLog').addEventListener('click', () => { logEl.textContent = ''; });
+    $('btnClearToken').addEventListener('click', () => { setToken(null); localStorage.removeItem('chat_token'); });
+
+    setConnState('disconnected');
+
+    window._chat = { get socket() { return socket }, setToken, setCurrentRoom, log };
+
+  </script>
+</body>
+</html>
