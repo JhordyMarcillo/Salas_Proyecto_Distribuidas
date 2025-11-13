@@ -142,7 +142,13 @@ const ChatRoom = () => {
           </Button>
           <div>
             <h1 className="text-xl font-bold text-primary">{roomName}</h1>
-            <p className="text-xs text-muted-foreground">42 members online</p>
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                const users = Array.from(new Set(messages.map((m) => m.user).filter(Boolean)));
+                if (users.length === 0) return "No hay usuarios conectados";
+                return `${users.length} usuario${users.length > 1 ? "s" : ""} en línea: ${users.join(", ")}`;
+              })()}
+            </p>
           </div>
         </div>
       </header>

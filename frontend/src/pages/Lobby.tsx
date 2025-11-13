@@ -93,13 +93,7 @@ const Lobby = () => {
         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
           <div className="flex items-center justify-between">
             <h2 className="text-3xl font-bold text-primary">Lobbies</h2>
-            <Button 
-              onClick={handleCreateRoom}
-              className="glow-button bg-primary hover:bg-accent text-primary-foreground"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Room
-            </Button>
+            
           </div>
 
           <div className="relative">
@@ -121,7 +115,7 @@ const Lobby = () => {
               className="flex-1 bg-card border-input"
             />
             <Button onClick={handleCreateRoom} className="glow-button bg-primary hover:bg-accent text-primary-foreground">
-              Create
+              Create Room
             </Button>
           </div>
 
