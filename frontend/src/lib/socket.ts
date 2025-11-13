@@ -4,7 +4,8 @@ let socket: Socket | null = null;
 let currentToken: string | null = null;
 
 const getApiUrl = () => {
-  return (import.meta.env.VITE_API_URL as string) || "http://localhost:5000";
+  return (import.meta.env.VITE_API_URL as string) || "http://10.40.2.117:5000";//Cambiar por la IP del servidor
+  //  return (import.meta.env.VITE_API_URL as string) || "http://localhost:5000"; Asi si es local
 };
 
 export function initSocket(token?: string) {

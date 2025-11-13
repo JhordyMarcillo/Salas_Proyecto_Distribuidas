@@ -1,6 +1,7 @@
 import os
 import jwt
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from functools import wraps
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -51,7 +52,7 @@ def seed_if_empty():
         users.insert_one({
             "username": "admin",
             "password": pw,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(ZoneInfo('America/Guayaquil')),
             "current_room": None,
             "socket_id": None
         })
@@ -176,6 +177,9 @@ def ws_join(username, data):
 
     join_room(room)
     emit("join_success", {"room": room})
+    # emitir evento estructurado y texto legacy
+    ts = datetime.now(ZoneInfo('America/Guayaquil'))
+    emit("user_joined", {"username": username, "room": room, "timestamp": ts.isoformat()}, room=room)
     emit("status", {"msg": f"{username} se unió a {room}"}, room=room)
     print(f"[join] {username} -> {room}")
 
@@ -199,6 +203,9 @@ def ws_leave(username, data):
 
     leave_room(room)
     emit("leave_success", {"room": room})
+    # emitir evento estructurado y texto legacy
+    ts = datetime.now(ZoneInfo('America/Guayaquil'))
+    emit("user_left", {"username": username, "room": room, "timestamp": ts.isoformat()}, room=room)
     emit("status", {"msg": f"{username} salió de {room}"}, room=room)
     print(f"[leave] {username} <- {room}")
 
@@ -221,7 +228,8 @@ def ws_send_message(username, data):
         "room": room,
         "username": username,
         "msg": msg,
-        "timestamp": datetime.utcnow()
+        # usar zona horaria de Guayaquil para timestamps
+        "timestamp": datetime.now(ZoneInfo('America/Guayaquil'))
     }
     messages.insert_one(doc)
 
@@ -244,6 +252,13 @@ def ws_disconnect():
         return_document=ReturnDocument.AFTER
     )
     if user:
+        # Emitir evento estructurado de desconexión (si tenía sala, indicar room)
+        ts = datetime.now(ZoneInfo('America/Guayaquil'))
+        payload = {"username": user['username'], "timestamp": ts.isoformat()}
+        # incluir room si existía
+        if user.get('current_room'):
+            payload['room'] = user.get('current_room')
+        emit("user_disconnected", payload, broadcast=True)
         emit("status", {"msg": f"{user['username']} desconectado"}, broadcast=True)
         print(f"[disconnect] limpiado usuario {user['username']} (sid={sid})")
     else:
@@ -286,7 +301,7 @@ def create_room():
     doc = {
         'name': name,
         'description': description,
-        'created_at': datetime.utcnow()
+        'created_at': datetime.now(ZoneInfo('America/Guayaquil'))
     }
     rooms.insert_one(doc)
     return jsonify({'msg': 'room creado', 'room': {'name': name, 'description': description}}), 201

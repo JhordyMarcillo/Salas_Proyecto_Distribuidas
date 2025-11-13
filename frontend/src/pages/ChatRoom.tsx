@@ -19,6 +19,7 @@ const ChatRoom = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [usersOnline, setUsersOnline] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
 
   const roomName = id ? decodeURIComponent(id) : "Room";
@@ -63,10 +64,75 @@ const ChatRoom = () => {
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
           setMessages((prev) => [...prev, m]);
+          // añadir usuario al listado en linea
+          const u = d.username || "";
+          if (u) setUsersOnline((prev) => (prev.includes(u) ? prev : [...prev, u]));
         }
       };
 
       sock.on("message", onMessage);
+
+      // manejar eventos de estado (join/leave)
+      const onStatus = (d: any) => {
+        if (!mounted) return;
+        const msg = d && d.msg ? d.msg : "";
+        // formatos esperados: "<username> se unió a <room>", "<username> salió de <room>", "<username> desconectado"
+        try {
+          if (msg.includes(" se unió a ")) {
+            const username = msg.split(" se unió a ")[0];
+            if (username) setUsersOnline((prev) => (prev.includes(username) ? prev : [...prev, username]));
+          } else if (msg.includes(" salió de ")) {
+            const username = msg.split(" salió de ")[0];
+            if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
+          } else if (msg.includes(" desconectado")) {
+            const username = msg.split(" desconectado")[0];
+            if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      };
+
+      sock.on("status", onStatus);
+
+      // eventos estructurados de presencia (backend Option A)
+      const onUserJoined = (d: any) => {
+        if (!mounted) return;
+        try {
+          if (!d) return;
+          const username = d.username || "";
+          const r = d.room || room;
+          if (String(r) !== String(room)) return;
+          if (username) setUsersOnline((prev) => (prev.includes(username) ? prev : [...prev, username]));
+        } catch (e) {}
+      };
+
+      const onUserLeft = (d: any) => {
+        if (!mounted) return;
+        try {
+          if (!d) return;
+          const username = d.username || "";
+          const r = d.room || room;
+          if (String(r) !== String(room)) return;
+          if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
+        } catch (e) {}
+      };
+
+      const onUserDisconnected = (d: any) => {
+        if (!mounted) return;
+        try {
+          if (!d) return;
+          const username = d.username || "";
+          // si payload incluye room, comprobar que sea la misma; si no, remover de la lista de todas formas
+          const r = d.room;
+          if (r && String(r) !== String(room)) return;
+          if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
+        } catch (e) {}
+      };
+
+      sock.on("user_joined", onUserJoined);
+      sock.on("user_left", onUserLeft);
+      sock.on("user_disconnected", onUserDisconnected);
 
       // Unirse a la sala al montar
       sock.emit("join", { token: token, room });
@@ -77,6 +143,10 @@ const ChatRoom = () => {
           sock.emit("leave", { token: token, room });
         } catch (e) {}
         sock.off("message", onMessage);
+        sock.off("status", onStatus);
+        sock.off("user_joined", onUserJoined);
+        sock.off("user_left", onUserLeft);
+        sock.off("user_disconnected", onUserDisconnected);
       };
     });
   }, [id, toast]);
@@ -144,7 +214,7 @@ const ChatRoom = () => {
             <h1 className="text-xl font-bold text-primary">{roomName}</h1>
             <p className="text-xs text-muted-foreground">
               {(() => {
-                const users = Array.from(new Set(messages.map((m) => m.user).filter(Boolean)));
+                const users = Array.from(new Set(usersOnline.filter(Boolean)));
                 if (users.length === 0) return "No hay usuarios conectados";
                 return `${users.length} usuario${users.length > 1 ? "s" : ""} en línea: ${users.join(", ")}`;
               })()}
