@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, Image as ImageIcon, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 
@@ -10,6 +10,7 @@ interface Message {
   id: string;
   user: string;
   text: string;
+  image?: string;
   timestamp: Date;
   isOwn: boolean;
 }
@@ -21,6 +22,8 @@ const ChatRoom = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [usersOnline, setUsersOnline] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const roomName = id ? decodeURIComponent(id) : "Room";
 
@@ -41,6 +44,7 @@ const ChatRoom = () => {
             id: String(idx) + (m.timestamp || ""),
             user: m.username || "",
             text: m.msg || "",
+            image: m.image || undefined,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
             isOwn: (m.username || "") === (localStorage.getItem("chat_user") || "You")
           }));
@@ -60,6 +64,7 @@ const ChatRoom = () => {
             id: Date.now().toString(),
             user: d.username || "",
             text: d.msg || "",
+            image: d.image || undefined,
             timestamp: d.timestamp ? new Date(d.timestamp) : new Date(),
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
@@ -169,20 +174,26 @@ const ChatRoom = () => {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputMessage.trim()) {
+    if (inputMessage.trim() || selectedImage) {
       const room = id ?? "default";
       const token = localStorage.getItem("chat_token");
       // emitir al servidor
       import("@/lib/socket").then(({ getSocket }) => {
         const s = getSocket();
         try {
-          s?.emit("send_message", { token: token, room: room, msg: inputMessage });
+          s?.emit("send_message", { 
+            token: token, 
+            room: room, 
+            msg: inputMessage,
+            image: selectedImage || undefined
+          });
         } catch (e) {
           // si no hay socket, mostrar localmente
           const newMessage: Message = {
             id: Date.now().toString(),
             user: "You",
             text: inputMessage,
+            image: selectedImage || undefined,
             timestamp: new Date(),
             isOwn: true,
           };
@@ -191,11 +202,50 @@ const ChatRoom = () => {
       });
 
       setInputMessage("");
+      removeSelectedImage();
     }
   };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+      if (!validImageTypes.includes(file.type)) {
+        toast({
+          title: "Formato no válido",
+          description: "Por favor selecciona una imagen (JPG, PNG, GIF o WebP)",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Archivo muy grande",
+          description: "La imagen no debe pesar más de 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        setSelectedImage(base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
@@ -235,7 +285,10 @@ const ChatRoom = () => {
                   <span className="text-xs text-muted-foreground font-medium px-3">{message.user}</span>
                 )}
                 <div className={`px-4 py-3 ${message.isOwn ? "chat-bubble-user" : "chat-bubble-other"}`}>
-                  <p className="text-sm">{message.text}</p>
+                  {message.image && (
+                    <img src={message.image} alt="Imagen compartida" className="max-w-xs rounded-lg mb-2" />
+                  )}
+                  {message.text && <p className="text-sm">{message.text}</p>}
                 </div>
                 <span className="text-xs text-muted-foreground px-3">{formatTime(message.timestamp)}</span>
               </div>
@@ -245,15 +298,46 @@ const ChatRoom = () => {
       </ScrollArea>
 
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <form onSubmit={handleSendMessage} className="container mx-auto max-w-4xl px-4 py-4">
+        <form onSubmit={handleSendMessage} className="container mx-auto max-w-4xl px-4 py-4 space-y-3">
+          {selectedImage && (
+            <div className="relative inline-block">
+              <img src={selectedImage} alt="Preview" className="max-h-32 rounded-lg" />
+              <Button
+                type="button"
+                size="icon"
+                variant="destructive"
+                className="absolute -top-2 -right-2 h-6 w-6"
+                onClick={removeSelectedImage}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Type a message..."
+              placeholder="Escribe el tu mensaje..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               className="flex-1 bg-background border-input focus:border-primary"
             />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              className="hover:bg-primary/10"
+              title="Subir imagen"
+            >
+              <ImageIcon className="w-4 h-4" />
+            </Button>
             <Button 
               type="submit" 
               className="glow-button bg-primary hover:bg-accent text-primary-foreground px-6"
