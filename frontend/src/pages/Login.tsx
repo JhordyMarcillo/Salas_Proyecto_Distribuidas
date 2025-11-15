@@ -8,12 +8,12 @@ import { toast } from "sonner";
 
 const Login = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!name || !password) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -27,7 +27,7 @@ const Login = () => {
         if (d && d.token) {
           localStorage.setItem("chat_token", d.token);
           // guardar usuario para marcar mensajes propios
-          localStorage.setItem("chat_user", email);
+          localStorage.setItem("chat_user", name);
           // reconectar el socket con token para handshake
           try { initSocket(d.token); } catch (e) { /* ignore */ }
           toast.success("Login successful!");
@@ -48,7 +48,7 @@ const Login = () => {
       if (!sock.connected) {
         const onConnect = () => {
           try {
-            sock.emit("login", { username: email, password });
+            sock.emit("login", { username: name, password });
           } catch (e) {
             toast.error("Error al emitir login: " + String(e));
           }
@@ -59,7 +59,7 @@ const Login = () => {
         });
       } else {
         try {
-          sock.emit("login", { username: email, password });
+          sock.emit("login", { username: name, password });
         } catch (e) {
           toast.error("Error al emitir login: " + String(e));
         }
@@ -85,19 +85,19 @@ const Login = () => {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">Email</Label>
+              <Label htmlFor="name" className="text-foreground">Usuario</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="name"
+                type="text"
+                placeholder="Tu Usuario"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="bg-card border-input focus:border-primary transition-colors"
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-foreground">Password</Label>
+              <Label htmlFor="password" className="text-foreground">Contraseña</Label>
               <Input
                 id="password"
                 type="password"
@@ -113,17 +113,17 @@ const Login = () => {
             type="submit" 
             className="w-full glow-button bg-primary hover:bg-accent text-primary-foreground font-semibold"
           >
-            Sign In
+            Inicar
           </Button>
 
           <p className="text-center text-muted-foreground text-sm">
-            Don't have an account?{" "}
+            No tienes cuenta aun? que esperas{" "}
             <button
               type="button"
               onClick={() => navigate("/register")}
               className="text-primary hover:text-accent transition-colors font-medium"
             >
-              Sign up
+              Registra te
             </button>
           </p>
         </form>

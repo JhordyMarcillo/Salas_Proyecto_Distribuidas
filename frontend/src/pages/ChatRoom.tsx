@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ const ChatRoom = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [usersOnline, setUsersOnline] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const roomName = id ? decodeURIComponent(id) : "Room";
 
@@ -38,7 +39,7 @@ const ChatRoom = () => {
         .then((data) => {
           if (!mounted) return;
           const msgs = (data.messages || []).map((m: any, idx: number) => ({
-            id: String(idx) + (m.timestamp || ""),
+            id: m._id && m._id.$oid ? m._id.$oid : String(idx),
             user: m.username || "",
             text: m.msg || "",
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
@@ -56,6 +57,10 @@ const ChatRoom = () => {
       const onMessage = (d: any) => {
         if (!mounted) return;
         if (d && d.room && String(d.room) === String(room)) {
+          let tsRaw = d.timestamp;
+          if (d.timestamp && d.timestamp.$date) {
+            tsRaw = d.timestamp.$date;
+          }
           const m: Message = {
             id: Date.now().toString(),
             user: d.username || "",
@@ -64,6 +69,13 @@ const ChatRoom = () => {
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
           setMessages((prev) => [...prev, m]);
+          // Notificación si el mensaje es de otro usuario
+          if (!m.isOwn) {
+            toast({
+              title: `Nuevo mensaje de ${m.user}`,
+                description: m.text.length > 50 ? m.text.substring(0, 50) + "..." : m.text,
+              });
+             }
           // añadir usuario al listado en linea
           const u = d.username || "";
           if (u) setUsersOnline((prev) => (prev.includes(u) ? prev : [...prev, u]));
@@ -167,11 +179,18 @@ const ChatRoom = () => {
     };
   }, [id, roomName, toast]);
 
+  useEffect(() => {
+    // Mueve la vista al 'div' de referencia
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputMessage.trim()) {
+    const trimmedInput = inputMessage.trim();
+    if (trimmedInput.trim()) {
       const room = id ?? "default";
       const token = localStorage.getItem("chat_token");
+      
       // emitir al servidor
       import("@/lib/socket").then(({ getSocket }) => {
         const s = getSocket();
@@ -241,6 +260,7 @@ const ChatRoom = () => {
               </div>
             </div>
           ))}
+          <div ref={bottomRef} />
         </div>
       </ScrollArea>
 
@@ -249,7 +269,7 @@ const ChatRoom = () => {
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Type a message..."
+              placeholder="Escribe el tu mensaje..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               className="flex-1 bg-background border-input focus:border-primary"

@@ -1,0 +1,11 @@
+flask
+werkzeug
+flask-cors
+flask-pymongo
+flask-bcrypt
+flask-socketio
+pymongo
+pyjwt
+eventlet
+pytz
+tzdata
