@@ -9,14 +9,13 @@ import { toast } from "sonner";
 const Register = () => {
   const navigate = useNavigate();
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name || !password || !confirmPassword) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -33,7 +32,7 @@ const Register = () => {
       sock.once("register_success", (d: any) => {
         if (d && d.token) {
           localStorage.setItem("chat_token", d.token);
-          localStorage.setItem("chat_user", email);
+          localStorage.setItem("chat_user", name);
           // reconectar el socket con el token en handshake
           try { initSocket(d.token); } catch (e) { /* ignore */ }
           toast.success("Account created successfully!");
@@ -47,7 +46,7 @@ const Register = () => {
       });
 
       // usamos el campo email como username en este proyecto
-      sock.emit("register", { username: email, password });
+      sock.emit("register", { username: name, password });
     });
   };
 
@@ -61,37 +60,25 @@ const Register = () => {
             </div>
           </div>
           <h1 className="text-4xl font-bold text-primary mb-2">Join AquaChat</h1>
-          <p className="text-muted-foreground">Create your account</p>
+          <p className="text-muted-foreground">Create una cuenta</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-foreground">Name</Label>
+              <Label htmlFor="name" className="text-foreground">Usuario</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="John Doe"
+                placeholder="Usuario"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="bg-card border-input focus:border-primary transition-colors"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-card border-input focus:border-primary transition-colors"
-              />
-            </div>
             
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-foreground">Password</Label>
+              <Label htmlFor="password" className="text-foreground">Contraseña</Label>
               <Input
                 id="password"
                 type="password"
@@ -103,7 +90,7 @@ const Register = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-foreground">Confirm Password</Label>
+              <Label htmlFor="confirmPassword" className="text-foreground">Confirmar Contraseña</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -119,17 +106,17 @@ const Register = () => {
             type="submit" 
             className="w-full glow-button bg-primary hover:bg-accent text-primary-foreground font-semibold"
           >
-            Create Account
+            Crear la cuenta
           </Button>
 
           <p className="text-center text-muted-foreground text-sm">
-            Already have an account?{" "}
+            Ya tienes cuenta? Inicia{" "}
             <button
               type="button"
               onClick={() => navigate("/login")}
               className="text-primary hover:text-accent transition-colors font-medium"
             >
-              Sign in
+              Sesión
             </button>
           </p>
         </form>

@@ -92,7 +92,7 @@ const Lobby = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
           <div className="flex items-center justify-between">
-            <h2 className="text-3xl font-bold text-primary">Lobbies</h2>
+            <h2 className="text-3xl font-bold text-primary">Salas</h2>
             
           </div>
 
@@ -100,7 +100,7 @@ const Lobby = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
             <Input
               type="text"
-              placeholder="Search rooms..."
+              placeholder="Buscar salas..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 bg-card border-input focus:border-primary"
@@ -109,13 +109,13 @@ const Lobby = () => {
 
           <div className="flex gap-2 items-center">
             <Input
-              placeholder="New room name"
+              placeholder="Nombre de la nueva sala"
               value={newRoomName}
               onChange={(e) => setNewRoomName(e.target.value)}
               className="flex-1 bg-card border-input"
             />
             <Button onClick={handleCreateRoom} className="glow-button bg-primary hover:bg-accent text-primary-foreground">
-              Create Room
+              Crear la sala 
             </Button>
           </div>
 
@@ -131,7 +131,7 @@ const Lobby = () => {
                   <p className="text-muted-foreground text-sm">{room.description}</p>
                   <div className="flex items-center gap-2 text-primary">
                     <Users className="w-4 h-4" />
-                    <span className="text-sm font-medium">{room.members ?? 0} members</span>
+                    <span className="text-sm font-medium">{room.members ?? 0} Participantes</span>
                   </div>
                 </div>
               </Card>
@@ -140,7 +140,7 @@ const Lobby = () => {
 
           {filteredRooms.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">No rooms found</p>
+              <p className="text-muted-foreground">No hay salas</p>
             </div>
           )}
         </div>

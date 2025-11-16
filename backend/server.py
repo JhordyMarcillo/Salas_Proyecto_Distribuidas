@@ -315,10 +315,16 @@ def room_messages(room):
     docs = list(reversed(docs))
     out = []
     for d in docs:
+        ts = d.get("timestamp")
+        ts_iso = None
+        if ts:
+            # Añadimos la 'Z' manualmente para forzar que sea UTC
+            ts_iso = ts.isoformat() + "Z" 
+            
         out.append({
             "username": d.get("username"),
             "msg": d.get("msg"),
-            "timestamp": d.get("timestamp").isoformat() if d.get("timestamp") else None
+            "timestamp": ts_iso
         })
     return jsonify({"messages": out})
 
