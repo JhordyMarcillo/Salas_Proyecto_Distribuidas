@@ -9,3 +9,4 @@ pyjwt
 eventlet
 pytz
 tzdata
+cloudinary
