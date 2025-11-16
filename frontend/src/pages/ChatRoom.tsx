@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send, Image as ImageIcon, X } from "lucide-react";
+import { ArrowLeft, Send, Image as ImageIcon, FileText, X, Download } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,6 +11,7 @@ interface Message {
   user: string;
   text: string;
   image?: string;
+  file?: { name: string; data: string; type: string };
   timestamp: Date;
   isOwn: boolean;
 }
@@ -23,6 +24,8 @@ const ChatRoom = () => {
   const [usersOnline, setUsersOnline] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ name: string; data: string; type: string } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const roomName = id ? decodeURIComponent(id) : "Room";
@@ -45,6 +48,7 @@ const ChatRoom = () => {
             user: m.username || "",
             text: m.msg || "",
             image: m.image || undefined,
+            file: m.file || undefined,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
             isOwn: (m.username || "") === (localStorage.getItem("chat_user") || "You")
           }));
@@ -65,6 +69,7 @@ const ChatRoom = () => {
             user: d.username || "",
             text: d.msg || "",
             image: d.image || undefined,
+            file: d.file || undefined,
             timestamp: d.timestamp ? new Date(d.timestamp) : new Date(),
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
@@ -174,7 +179,7 @@ const ChatRoom = () => {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputMessage.trim() || selectedImage) {
+    if (inputMessage.trim() || selectedImage || selectedFile) {
       const room = id ?? "default";
       const token = localStorage.getItem("chat_token");
       // emitir al servidor
@@ -185,7 +190,8 @@ const ChatRoom = () => {
             token: token, 
             room: room, 
             msg: inputMessage,
-            image: selectedImage || undefined
+            image: selectedImage || undefined,
+            file: selectedFile || undefined
           });
         } catch (e) {
           // si no hay socket, mostrar localmente
@@ -194,6 +200,7 @@ const ChatRoom = () => {
             user: "You",
             text: inputMessage,
             image: selectedImage || undefined,
+            file: selectedFile || undefined,
             timestamp: new Date(),
             isOwn: true,
           };
@@ -203,6 +210,7 @@ const ChatRoom = () => {
 
       setInputMessage("");
       removeSelectedImage();
+      removeSelectedFile();
     }
   };
 
@@ -243,9 +251,51 @@ const ChatRoom = () => {
 
   const removeSelectedImage = () => {
     setSelectedImage(null);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const maxSize = 10 * 1024 * 1024; // 10MB para archivos
+      if (file.size > maxSize) {
+        toast({
+          title: "Archivo muy grande",
+          description: "El archivo no debe pesar más de 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        setSelectedFile({
+          name: file.name,
+          data: base64String,
+          type: file.type,
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const downloadFile = (fileData: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = fileData;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -288,6 +338,21 @@ const ChatRoom = () => {
                   {message.image && (
                     <img src={message.image} alt="Imagen compartida" className="max-w-xs rounded-lg mb-2" />
                   )}
+                  {message.file && (
+                    <div className="flex items-center gap-2 mb-2 bg-secondary/20 p-2 rounded">
+                      <FileText className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-sm truncate flex-1">{message.file.name}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="p-1 h-6 w-6"
+                        onClick={() => downloadFile(message.file!.data, message.file!.name)}
+                        title="Descargar archivo"
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
                   {message.text && <p className="text-sm">{message.text}</p>}
                 </div>
                 <span className="text-xs text-muted-foreground px-3">{formatTime(message.timestamp)}</span>
@@ -313,6 +378,21 @@ const ChatRoom = () => {
               </Button>
             </div>
           )}
+          {selectedFile && (
+            <div className="flex items-center gap-2 bg-secondary/20 p-3 rounded-lg">
+              <FileText className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm truncate flex-1">{selectedFile.name}</span>
+              <Button
+                type="button"
+                size="icon"
+                variant="destructive"
+                className="h-6 w-6"
+                onClick={removeSelectedFile}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
           <div className="flex gap-2">
             <Input
               type="text"
@@ -322,21 +402,37 @@ const ChatRoom = () => {
               className="flex-1 bg-background border-input focus:border-primary"
             />
             <input
-              ref={fileInputRef}
+              ref={imageInputRef}
               type="file"
               accept="image/*"
               onChange={handleImageSelect}
+              className="hidden"
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileSelect}
               className="hidden"
             />
             <Button
               type="button"
               variant="outline"
               size="icon"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => imageInputRef.current?.click()}
               className="hover:bg-primary/10"
               title="Subir imagen"
             >
               <ImageIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              className="hover:bg-primary/10"
+              title="Subir archivo"
+            >
+              <FileText className="w-4 h-4" />
             </Button>
             <Button 
               type="submit" 
