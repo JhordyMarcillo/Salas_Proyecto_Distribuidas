@@ -26,6 +26,7 @@ const Login = () => {
       const onSuccess = (d: any) => {
         if (d && d.token) {
           localStorage.setItem("chat_token", d.token);
+          localStorage.setItem("is_admin", d.is_admin ? "true" : "false");
           // guardar usuario para marcar mensajes propios
           localStorage.setItem("chat_user", name);
           // reconectar el socket con token para handshake

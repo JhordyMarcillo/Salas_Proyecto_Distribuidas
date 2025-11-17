@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Dialog } from "@/components/ui/dialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,20 +28,36 @@ const ChatRoom = () => {
   const [selectedFile, setSelectedFile] = useState<{ name: string; data: string; type: string } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Estado para tipo de sala y PIN
+  const [roomType, setRoomType] = useState<string>("text");
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  
+  const room = id ?? "default";
+  const hasSavedPin = localStorage.getItem(`pin_${room}`);
+  const [showPinDialog, setShowPinDialog] = useState(!hasSavedPin);
 
   const roomName = id ? decodeURIComponent(id) : "Room";
 
-  // conexión a backend via Socket.IO
+  // conexión a backend via Socket.IO y obtención de tipo de sala
   useEffect(() => {
     let mounted = true;
-    const room = id ?? "default";
     const token = localStorage.getItem("chat_token");
 
-    // cargar historial via REST
     import("@/lib/socket").then(({ apiUrl, initSocket }) => {
+      // obtener info de la sala (tipo y pin)
+      fetch(`${apiUrl}/rooms`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!mounted) return;
+          const found = (data.rooms || []).find((r: any) => r.name === room);
+          if (found) {
+            setRoomType(found.type || "text");
+          }
+        });
+
       // obtener mensajes del historial
       fetch(`${apiUrl}/rooms/${encodeURIComponent(room)}/messages`)
         .then((r) => r.json())
@@ -57,9 +74,7 @@ const ChatRoom = () => {
           }));
           setMessages(msgs);
         })
-        .catch(() => {
-          // si falla, mantener vacío
-        });
+        .catch(() => {});
 
       const sock = initSocket(token ?? undefined);
 
@@ -81,14 +96,12 @@ const ChatRoom = () => {
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
           setMessages((prev) => [...prev, m]);
-          // Notificación si el mensaje es de otro usuario
           if (!m.isOwn) {
             toast({
               title: `Nuevo mensaje de ${m.user}`,
-                description: m.text.length > 50 ? m.text.substring(0, 50) + "..." : m.text,
-              });
-             }
-          // añadir usuario al listado en linea
+              description: m.text.length > 50 ? m.text.substring(0, 50) + "..." : m.text,
+            });
+          }
           const u = d.username || "";
           if (u) setUsersOnline((prev) => (prev.includes(u) ? prev : [...prev, u]));
         }
@@ -100,7 +113,6 @@ const ChatRoom = () => {
       const onStatus = (d: any) => {
         if (!mounted) return;
         const msg = d && d.msg ? d.msg : "";
-        // formatos esperados: "<username> se unió a <room>", "<username> salió de <room>", "<username> desconectado"
         try {
           if (msg.includes(" se unió a ")) {
             const username = msg.split(" se unió a ")[0];
@@ -112,14 +124,11 @@ const ChatRoom = () => {
             const username = msg.split(" desconectado")[0];
             if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
           }
-        } catch (e) {
-          // ignore parse errors
-        }
+        } catch (e) {}
       };
 
       sock.on("status", onStatus);
 
-      // eventos estructurados de presencia (backend Option A)
       const onUserJoined = (d: any) => {
         if (!mounted) return;
         try {
@@ -147,7 +156,6 @@ const ChatRoom = () => {
         try {
           if (!d) return;
           const username = d.username || "";
-          // si payload incluye room, comprobar que sea la misma; si no, remover de la lista de todas formas
           const r = d.room;
           if (r && String(r) !== String(room)) return;
           if (username) setUsersOnline((prev) => prev.filter((x) => x !== username));
@@ -158,8 +166,23 @@ const ChatRoom = () => {
       sock.on("user_left", onUserLeft);
       sock.on("user_disconnected", onUserDisconnected);
 
-      // Unirse a la sala al montar
-      sock.emit("join", { token: token, room });
+      // Manejar error de PIN inválido
+      const onJoinError = (d: any) => {
+        if (!mounted) return;
+        if (d && d.msg && d.msg.includes("pin inválido")) {
+          setPinError("PIN incorrecto. Inténtalo de nuevo.");
+          localStorage.removeItem(`pin_${room}`);
+          setShowPinDialog(true);
+          setPinInput("");
+        }
+      };
+      sock.on("join_error", onJoinError);
+
+      // Si ya hay PIN guardado, unirse automáticamente
+      const savedPin = localStorage.getItem(`pin_${room}`);
+      if (savedPin) {
+        sock.emit("join", { token: token, room, pin: savedPin });
+      }
 
       return () => {
         mounted = false;
@@ -171,6 +194,7 @@ const ChatRoom = () => {
         sock.off("user_joined", onUserJoined);
         sock.off("user_left", onUserLeft);
         sock.off("user_disconnected", onUserDisconnected);
+        sock.off("join_error", onJoinError);
       };
     });
   }, [id, toast]);
@@ -322,6 +346,69 @@ const ChatRoom = () => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      {/* PIN Dialog */}
+      {showPinDialog && (
+  <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/30">
+    <div className="bg-card p-8 rounded-xl shadow-xl max-w-sm w-full border-2 border-primary flex flex-col items-center">
+      <h2 className="text-xl font-bold mb-4 text-primary">Ingresa el PIN de la sala</h2>
+      <Input
+        type="text"
+        placeholder="PIN"
+        value={pinInput}
+        onChange={e => setPinInput(e.target.value)}
+        className="mb-2"
+        maxLength={6}
+      />
+      {pinError && <p className="text-destructive text-sm mb-2">{pinError}</p>}
+      <div className="flex gap-2 w-full mt-2">
+        <Button
+          className="flex-1 bg-primary text-primary-foreground"
+          onClick={() => {
+            // Validar el PIN
+            if (!pinInput || pinInput.length < 4) {
+              setPinError("El PIN debe tener al menos 4 dígitos");
+              return;
+            }
+
+            const token = localStorage.getItem("chat_token");
+
+            // Guardar el PIN
+            localStorage.setItem(`pin_${room}`, pinInput);
+            setPinError("");
+
+            // Cerrar el diálogo
+            setShowPinDialog(false);
+
+            // Emitir el join con el PIN
+            import("@/lib/socket").then(({ getSocket }) => {
+              const s = getSocket();
+              if (s) {
+                s.emit("join", {
+                  token: token,
+                  room: room,
+                  pin: pinInput,
+                });
+              }
+            });
+          }}
+        >
+          Entrar
+        </Button>
+        <Button
+          variant="outline"
+          className="flex-1 border-primary text-primary"
+          onClick={() => {
+            setShowPinDialog(false);
+            navigate("/lobby");
+          }}
+        >
+          Regresar
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <Button
@@ -341,6 +428,7 @@ const ChatRoom = () => {
                 return `${users.length} usuario${users.length > 1 ? "s" : ""} en línea: ${users.join(", ")}`;
               })()}
             </p>
+            <p className="text-xs text-muted-foreground mt-1">Tipo de sala: <span className="font-semibold">{roomType === "multimedia" ? "Multimedia" : "Solo texto"}</span></p>
           </div>
         </div>
       </header>
@@ -357,10 +445,10 @@ const ChatRoom = () => {
                   <span className="text-xs text-muted-foreground font-medium px-3">{message.user}</span>
                 )}
                 <div className={`px-4 py-3 ${message.isOwn ? "chat-bubble-user" : "chat-bubble-other"}`}>
-                  {message.image && (
+                  {message.image && roomType === "multimedia" && (
                     <img src={message.image} alt="Imagen compartida" className="max-w-xs rounded-lg mb-2" />
                   )}
-                  {message.file && (
+                  {message.file && roomType === "multimedia" && (
                     <div className="flex items-center gap-2 mb-2 bg-secondary/20 p-2 rounded">
                       <FileText className="w-4 h-4 flex-shrink-0" />
                       <span className="text-sm truncate flex-1">{message.file.name}</span>
@@ -386,8 +474,9 @@ const ChatRoom = () => {
       </ScrollArea>
 
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+        {/* Solo permitir enviar imágenes/archivos si la sala es multimedia */}
         <form onSubmit={handleSendMessage} className="container mx-auto max-w-4xl px-4 py-4 space-y-3">
-          {selectedImage && (
+          {selectedImage && roomType === "multimedia" && (
             <div className="relative inline-block">
               <img src={selectedImage} alt="Preview" className="max-h-32 rounded-lg" />
               <Button
@@ -401,7 +490,7 @@ const ChatRoom = () => {
               </Button>
             </div>
           )}
-          {selectedFile && (
+          {selectedFile && roomType === "multimedia" && (
             <div className="flex items-center gap-2 bg-secondary/20 p-3 rounded-lg">
               <FileText className="w-5 h-5 flex-shrink-0" />
               <span className="text-sm truncate flex-1">{selectedFile.name}</span>
@@ -424,39 +513,43 @@ const ChatRoom = () => {
               onChange={(e) => setInputMessage(e.target.value)}
               className="flex-1 bg-background border-input focus:border-primary"
             />
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => imageInputRef.current?.click()}
-              className="hover:bg-primary/10"
-              title="Subir imagen"
-            >
-              <ImageIcon className="w-4 h-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              className="hover:bg-primary/10"
-              title="Subir archivo"
-            >
-              <FileText className="w-4 h-4" />
-            </Button>
+            {roomType === "multimedia" && (
+              <>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="hover:bg-primary/10"
+                  title="Subir imagen"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="hover:bg-primary/10"
+                  title="Subir archivo"
+                >
+                  <FileText className="w-4 h-4" />
+                </Button>
+              </>
+            )}
             <Button 
               type="submit" 
               className="glow-button bg-primary hover:bg-accent text-primary-foreground px-6"

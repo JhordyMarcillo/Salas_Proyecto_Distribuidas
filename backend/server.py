@@ -195,45 +195,70 @@ def ws_login(data):
         {"$set": {"socket_id": sid, "last_login": datetime.utcnow()}},
         return_document=ReturnDocument.AFTER
     )
-    emit("login_success", {"msg": "login correcto", "token": token})
+    emit("login_success", {"msg": "login correcto", "token": token, "is_admin": user.get("is_admin", False)})
     print(f"[login] {username} inició sesión (sid={sid})")
+
+@socketio.on("join")
+# En server.py
 
 @socketio.on("join")
 def ws_join(data):
     sid = request.sid
     token = data.get("token")
-    if token:
-        try:
-            username = verify_token(token)
-        except ValueError as e:
-            code = "token_invalid"
-            if str(e) == "token_expired":
-                code = "token_expired"
-            emit("join_error", {"code": code, "msg": "Token inválido o expirado"})
-            return
+    room_name = (data.get("room") or "").strip()
+    provided_pin = (data.get("pin") or "").strip()
 
-        room = (data.get("room") or "").strip()
-        if not room:
-            emit("join_error", {"msg": "room requerido"})
-            return
-
-        updated = users.find_one_and_update(
-            {"username": username, "current_room": None},
-            {"$set": {"current_room": room, "socket_id": sid}},
-            return_document=ReturnDocument.AFTER
-        )
-        if not updated:
-            u = users.find_one({"username": username})
-            emit("join_error", {"msg": f"usuario ya en sala {u.get('current_room')}"} )
-            return
-
-        join_room(room)
-        emit("join_success", {"room": room})
-        ts = datetime.now(ZoneInfo('America/Guayaquil'))
-        emit("user_joined", {"username": username, "room": room, "timestamp": ts.isoformat()}, room=room)
-        emit("status", {"msg": f"{username} se unió a {room}"}, room=room)
-        print(f"[join] {username} -> {room}")
+    # 1. VALIDAR LA SALA Y EL PIN PRIMERO
+    if not room_name:
+        emit("join_error", {"msg": "Nombre de sala (room) requerido"})
         return
+
+    room_doc = rooms.find_one({"name": room_name})
+    if not room_doc:
+        emit("join_error", {"msg": "Sala no existe"})
+        return
+
+    required_pin = room_doc.get("pin")
+    if required_pin:
+        if not provided_pin:
+            emit("join_error", {"msg": "PIN requerido para esta sala"})
+            return
+        # Comparamos como strings
+        if str(provided_pin) != str(required_pin): 
+            emit("join_error", {"msg": "PIN inválido"})
+            return
+    
+    # 2. SI EL PIN ES CORRECTO (o no se requiere), validar el token
+    if not token:
+        # Esto ahora es un error, ya que no manejamos anónimos
+        emit("join_error", {"code": "no_token", "msg": "Token de autenticación requerido"})
+        return
+
+    try:
+        username = verify_token(token)
+    except ValueError as e:
+        code = "token_invalid"
+        if str(e) == "token_expired":
+            code = "token_expired"
+        emit("join_error", {"code": code, "msg": "Token inválido o expirado"})
+        return
+
+    # 3. UNIR AL USUARIO
+    updated = users.find_one_and_update(
+        {"username": username},
+        {"$set": {"current_room": room_name, "socket_id": sid}},
+        return_document=ReturnDocument.AFTER
+    )
+    if not updated:
+         emit("join_error", {"msg": "Error: Usuario no encontrado en la DB"})
+         return
+
+    join_room(room_name)
+    emit("join_success", {"room": room_name})
+    ts = datetime.now(ZoneInfo('America/Guayaquil'))
+    emit("user_joined", {"username": username, "room": room_name, "timestamp": ts.isoformat()}, room=room_name)
+    emit("status", {"msg": f"{username} se unió a {room_name}"}, room=room_name)
+    print(f"[join] {username} -> {room_name} (PIN verificado)")
 
     room_id = (data.get("room_id") or "").strip()
     pin = (data.get("pin") or "").strip()
