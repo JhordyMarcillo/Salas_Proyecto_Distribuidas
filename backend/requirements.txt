@@ -10,3 +10,4 @@ eventlet
 pytz
 tzdata
 cloudinary
+python-dotenv
