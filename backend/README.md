@@ -2,6 +2,8 @@
 
 Backend para sistema de salas de chat en tiempo real desarrollado con Flask, SocketIO y MongoDB. Permite registro de usuarios, autenticación JWT, gestión de salas y mensajería en tiempo real.
 
+Este documento describe cómo instalar y ejecutar el backend, las variables de entorno importantes, los endpoints HTTP y eventos WebSocket disponibles, así como observaciones de seguridad y problemas conocidos detectados en `server.py`.
+
 ## 📋 Requisitos Previos
 
 Antes de comenzar, asegúrate de tener instalado:
@@ -16,8 +18,8 @@ Antes de comenzar, asegúrate de tener instalado:
 
 ### Paso 1: Clonar el repositorio
 
-```bash
-cd Salas_Proyecto_Distribuidas/backend
+```powershell
+cd path\to\Salas_Proyecto_Distribuidas\backend
 ```
 
 ### Paso 2: Crear un entorno virtual (recomendado)
@@ -25,9 +27,9 @@ cd Salas_Proyecto_Distribuidas/backend
 Es recomendable usar un entorno virtual para aislar las dependencias del proyecto:
 
 **Windows:**
-```bash
+```powershell
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\Activate
 ```
 
 **Linux/Mac:**
@@ -38,55 +40,53 @@ source venv/bin/activate
 
 ### Paso 3: Instalar dependencias
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
-Esto instalará las siguientes dependencias:
-- `flask==2.2.3` - Framework web
-- `flask-cors==3.1.1` - Soporte CORS
-- `flask-pymongo==2.3.0` - Integración con MongoDB
-- `flask-bcrypt==1.0.1` - Encriptación de contraseñas
-- `flask-socketio==5.3.0` - WebSockets
-- `pymongo==4.2.0` - Driver de MongoDB
-- `pyjwt==2.10.1` - Tokens JWT
+Dependencias relevantes (ver `requirements.txt`). El servidor usa `flask-socketio` en modo `eventlet`, por lo que también necesitas `eventlet` y la librería `cloudinary` si quieres subir archivos a Cloudinary. Ejemplo de paquetes importantes:
+- `flask`
+- `flask-cors`
+- `flask-pymongo`
+- `flask-bcrypt`
+- `flask-socketio`
+- `eventlet`
+- `pymongo`
+- `pyjwt`
+- `cloudinary` (opcional, para uploads)
+
+Si ves errores de incompatibilidad con `werkzeug`, sigue la nota de solución de problemas más abajo.
 
 ### Paso 4: Configurar MongoDB
 
 **Opción A: MongoDB Local**
 
 1. Asegúrate de que MongoDB esté corriendo en tu máquina:
-   ```bash
+   ```powershell
    # Windows (si MongoDB está en el PATH)
    mongod
-   
-   # O verifica que el servicio esté corriendo
    ```
 
 2. MongoDB se conectará automáticamente a: `mongodb://localhost:27017/Proyecto_Distribuidas`
 
 **Opción B: MongoDB Atlas (Cloud)**
 
-1. Crea una cuenta en [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+1. Crea una cuenta en https://www.mongodb.com/cloud/atlas
 2. Crea un cluster y obtén la cadena de conexión
 3. Configura la variable de entorno `MONGO_URI` (ver Paso 5)
 
-### Paso 5: Configurar variables de entorno (opcional)
+### Paso 5: Configurar variables de entorno (recomendado)
 
-El servidor funciona con valores por defecto, pero puedes personalizar la configuración mediante variables de entorno:
+El servidor tiene valores por defecto codificados en `server.py`, pero es inseguro dejar credenciales en el código. Se recomienda configurar las siguientes variables de entorno antes de ejecutar el servidor.
 
 **Windows (PowerShell):**
 ```powershell
-$env:MONGO_URI="mongodb://localhost:27017/Proyecto_Distribuidas"
-$env:JWT_SECRET="tu_secreto_super_seguro_aqui"
-$env:JWT_EXPIRE_HOURS="24"
-```
-
-**Windows (CMD):**
-```cmd
-set MONGO_URI=mongodb://localhost:27017/Proyecto_Distribuidas
-set JWT_SECRET=tu_secreto_super_seguro_aqui
-set JWT_EXPIRE_HOURS=24
+$env:MONGO_URI = "mongodb://localhost:27017/Proyecto_Distribuidas"
+$env:JWT_SECRET = "tu_secreto_super_seguro_aqui"
+$env:JWT_EXPIRE_HOURS = "24"
+$env:CLOUDINARY_CLOUD_NAME = "<tu_cloud_name>"
+$env:CLOUDINARY_API_KEY = "<tu_api_key>"
+$env:CLOUDINARY_API_SECRET = "<tu_api_secret>"
 ```
 
 **Linux/Mac:**
@@ -94,16 +94,24 @@ set JWT_EXPIRE_HOURS=24
 export MONGO_URI="mongodb://localhost:27017/Proyecto_Distribuidas"
 export JWT_SECRET="tu_secreto_super_seguro_aqui"
 export JWT_EXPIRE_HOURS="24"
+export CLOUDINARY_CLOUD_NAME="<tu_cloud_name>"
+export CLOUDINARY_API_KEY="<tu_api_key>"
+export CLOUDINARY_API_SECRET="<tu_api_secret>"
 ```
 
-**Variables disponibles:**
-- `MONGO_URI`: URI de conexión a MongoDB (default: `mongodb://localhost:27017/Proyecto_Distribuidas`)
-- `JWT_SECRET`: Secreto para firmar tokens JWT (default: `TOKEN_SUPER_SECRETO_SEGURO`)
-- `JWT_EXPIRE_HOURS`: Horas de expiración del token (default: `20`)
+- **`MONGO_URI`**: URI de conexión a MongoDB (default codificado: `mongodb://localhost:27017/Proyecto_Distribuidas`).
+- **`JWT_SECRET`**: Secreto para firmar tokens JWT (default en código: `TOKEN_SUPER_SECRETO_SEGURO`) — cámbialo siempre en producción.
+- **`JWT_EXPIRE_HOURS`**: Horas de expiración del token (default en código: `20`).
+- **`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`**: Configuración para subir archivos a Cloudinary. Si no están definidos, las funcionalidades de upload fallarán o el servidor intentará usar valores codificados en `server.py` (no recomendado).
+
+Nota: Actualmente `server.py` contiene credenciales de Cloudinary y valores por defecto en el código. Es crítico mover esas credenciales a variables de entorno antes de desplegar en cualquier entorno público.
 
 ### Paso 6: Levantar el servidor
 
-```bash
+```powershell
+# activar virtualenv (Windows)
+venv\Scripts\Activate
+# ejecutar
 python server.py
 ```
 
@@ -111,242 +119,111 @@ El servidor se iniciará en:
 - **URL:** `http://localhost:5000`
 - **WebSocket:** `ws://localhost:5000/socket.io/`
 
-Deberías ver un mensaje indicando que el servidor está corriendo. Si es la primera vez, se creará automáticamente un usuario administrador:
+En la primera ejecución, si la colección de usuarios está vacía, `server.py` crea automáticamente un usuario administrador:
 - **Usuario:** `admin`
 - **Contraseña:** `admin123`
+
+IMPORTANTE: Cambia la contraseña del admin y el `JWT_SECRET` antes de exponer el servicio.
 
 ## 📡 API y Eventos WebSocket
 
 ### Endpoints HTTP REST
 
-#### `GET /`
-Página de bienvenida con información del servidor.
+- **`GET /`**: Página de bienvenida con información del servidor.
 
-#### `GET /rooms`
-Obtiene la lista de todas las salas disponibles.
+- **`GET /rooms`**: Lista todas las salas. Respuesta contiene `id`, `name`, `description`, `type`, `created_at` e `members`.
 
-**Respuesta:**
-```json
-{
-  "rooms": [
-    {
-      "name": "sala1",
-      "description": "Descripción de la sala",
-      "created_at": "2024-01-01T12:00:00",
-      "members": 3
-    }
-  ]
-}
-```
+- **`POST /rooms`** (admin): Crea una sala nueva. Requiere token JWT en header `Authorization: Bearer <token>`. Body JSON esperado:
+  - `name` (string, requerido)
+  - `description` (opcional)
+  - `pin` (opcional, si no se proporciona se genera uno)
+  - `type` (`text` o `multimedia`)
+  - `max_file_mb` (opcional)
 
-#### `POST /rooms`
-Crea una nueva sala.
+- **`GET /rooms/<room>/messages`**: Obtiene últimos 100 mensajes de la sala `<room>`.
 
-**Body:**
-```json
-{
-  "name": "sala1",
-  "description": "Descripción opcional"
-}
-```
+### Eventos WebSocket (resumen)
 
-**Respuesta:**
-```json
-{
-  "msg": "room creado",
-  "room": {
-    "name": "sala1",
-    "description": "Descripción opcional"
-  }
-}
-```
+- **`connect`**: Conexión inicial. El servidor emite `status`.
 
-#### `GET /rooms/<room>/messages`
-Obtiene los últimos 100 mensajes de una sala.
+- **`register`**: Registra un usuario. Payload: `{ "username": "user", "password": "pass" }`. Respuestas: `register_success`, `register_error`.
 
-**Respuesta:**
-```json
-{
-  "messages": [
-    {
-      "username": "usuario1",
-      "msg": "Hola mundo",
-      "timestamp": "2024-01-01T12:00:00"
-    }
-  ]
-}
-```
+- **`login`**: Login de usuario. Payload: `{ "username": "user", "password": "pass" }`. Respuestas: `login_success` (incluye `token`), `login_error`.
 
-### Eventos WebSocket
+- **`join`**: Unir a sala. El servidor exige un token JWT para la mayoría de flujos. Payload habitual: `{ "token": "<JWT>", "room": "room_name", "pin": "optional" }`.
+  - Respuestas: `join_success`, `join_error`, y el evento `user_joined` broadcast en la sala.
+  - Atención: `server.py` contiene lógica para joins anónimos pero, en la versión actual, el flujo para anónimos es efectivamente inalcanzable porque el handler retorna error si `token` no está presente. Ver 'Problemas conocidos' abajo.
 
-#### `connect`
-Establece conexión WebSocket con el servidor.
+- **`leave`**: Abandonar sala. Payload: `{ "token": "<JWT>", "room": "room_name" }`. Respuestas: `leave_success`, `leave_error`, y `user_left` broadcast.
 
-**Ejemplo:**
-```javascript
-const socket = io('http://localhost:5000');
-socket.on('connect', () => {
-  console.log('Conectado');
-});
-```
+- **`send_message`**: Enviar mensaje o archivo. Payload: `{ "token": "<JWT>", "room": "room_name", "msg": "texto opcional", "file_url": "url opcional", "original_filename": "opcional" }`.
+  - Respuestas: `message` (broadcast) o `msg_error`.
 
-#### `register`
-Registra un nuevo usuario.
-
-**Payload:**
-```json
-{
-  "username": "nuevo_usuario",
-  "password": "contraseña123"
-}
-```
-
-**Respuestas:**
-- `register_success`: `{ "msg": "usuario creado", "token": "<JWT_TOKEN>" }`
-- `register_error`: `{ "msg": "mensaje de error" }`
-
-#### `login`
-Inicia sesión con un usuario existente.
-
-**Payload:**
-```json
-{
-  "username": "admin",
-  "password": "admin123"
-}
-```
-
-**Respuestas:**
-- `login_success`: `{ "msg": "login correcto", "token": "<JWT_TOKEN>" }`
-- `login_error`: `{ "msg": "credenciales inválidas" }`
-
-#### `join`
-Une al usuario a una sala (requiere token JWT).
-
-**Payload:**
-```json
-{
-  "token": "<JWT_TOKEN>",
-  "room": "sala1"
-}
-```
-
-**Respuestas:**
-- `join_success`: `{ "room": "sala1" }`
-- `join_error`: `{ "msg": "mensaje de error" }`
-- `user_joined`: `{ "username": "usuario", "room": "sala1", "timestamp": "..." }` (broadcast a la sala)
-
-#### `leave`
-Sale de una sala (requiere token JWT).
-
-**Payload:**
-```json
-{
-  "token": "<JWT_TOKEN>",
-  "room": "sala1"
-}
-```
-
-**Respuestas:**
-- `leave_success`: `{ "room": "sala1" }`
-- `leave_error`: `{ "msg": "mensaje de error" }`
-- `user_left`: `{ "username": "usuario", "room": "sala1", "timestamp": "..." }` (broadcast a la sala)
-
-#### `send_message`
-Envía un mensaje a una sala (requiere token JWT).
-
-**Payload:**
-```json
-{
-  "token": "<JWT_TOKEN>",
-  "room": "sala1",
-  "msg": "Hola a todos!"
-}
-```
-
-**Respuestas:**
-- `message`: `{ "room": "sala1", "username": "usuario", "msg": "Hola a todos!", "timestamp": "..." }` (broadcast a la sala)
-- `msg_error`: `{ "msg": "mensaje de error" }`
-
-#### `disconnect`
-Se emite automáticamente cuando un cliente se desconecta.
-
-**Eventos broadcast:**
-- `user_disconnected`: `{ "username": "usuario", "timestamp": "...", "room": "sala1" }` (opcional)
-- `status`: `{ "msg": "usuario desconectado" }`
+- **`disconnect`**: Evento automático. El servidor limpia `socket_id`, elimina usuarios anónimos y emite `user_disconnected` y `status`.
 
 ## 🧪 Pruebas
 
-### Usando el cliente HTML de prueba
+### Cliente de prueba
 
-El proyecto incluye un archivo `client.html` que puedes abrir en tu navegador para probar todas las funcionalidades:
+Hay un `client.html` en el directorio `backend` que sirve para pruebas manuales (conectar, registrar, logear, unirse a salas y enviar mensajes).
 
-1. Asegúrate de que el servidor esté corriendo
-2. Abre `client.html` en tu navegador
-3. Conecta al servidor (`http://localhost:5000`)
-4. Prueba registro, login, unirse a salas y enviar mensajes
-
-### Usando Postman
+### Usando herramientas (Postman / wscat)
 
 1. Conecta a WebSocket: `ws://localhost:5000/socket.io/?EIO=4&transport=websocket`
-2. Envía el paquete inicial: `40`
-3. Prueba los eventos:
-   - `42["register", {"username":"user","password":"pass123"}]`
-   - `42["login", {"username":"admin","password":"admin123"}]`
-   - `42["join", {"token":"<JWT>","room":"sala1"}]`
-   - `42["send_message", {"token":"<JWT>","room":"sala1","msg":"Hola!"}]`
-   - `42["leave", {"token":"<JWT>","room":"sala1"}]`
+2. Para probar eventos raw con el protocolo socket.io (poco amigable desde Postman) usa un cliente socket.io o abre `client.html`.
+
+Ejemplos de eventos via socket.io (desde un cliente JS):
+```javascript
+socket.emit('register', { username: 'user', password: 'pass123' });
+socket.emit('login', { username: 'admin', password: 'admin123' });
+socket.emit('join', { token: '<JWT>', room: 'sala1' });
+socket.emit('send_message', { token: '<JWT>', room: 'sala1', msg: 'Hola!' });
+socket.emit('leave', { token: '<JWT>', room: 'sala1' });
+```
 
 ## 🔒 Seguridad
 
-- Las contraseñas se almacenan hasheadas con bcrypt
-- La autenticación utiliza tokens JWT
-- Los tokens tienen expiración configurable (default: 20 horas)
-- Los usuarios solo pueden enviar mensajes a salas en las que están unidos
-- Un usuario solo puede estar en una sala a la vez
+- **Contraseñas**: se almacenan hasheadas con `bcrypt`.
+- **Autenticación**: JWT firmado con `JWT_SECRET`. Cambia el secreto en producción.
+- **Expiración**: tokens expiran (valor por defecto: 20 horas en código).
+- **Control de acceso**: el servidor verifica que el usuario que envía mensajes esté en la sala correspondiente.
+- **Riesgos detectados**: el código contiene credenciales de Cloudinary incrustadas. Mover estas credenciales a variables de entorno.
 
 ## 📝 Notas
 
-- El servidor crea automáticamente un usuario `admin` con contraseña `admin123` si la base de datos está vacía
-- Los timestamps utilizan la zona horaria de Guayaquil (America/Guayaquil)
-- El servidor corre en modo debug por defecto (útil para desarrollo)
-- Para producción, desactiva el modo debug y configura un `JWT_SECRET` seguro
+- El servidor crea automáticamente un usuario `admin` con contraseña `admin123` si la colección `users` está vacía.
+- Los timestamps usan la zona horaria `America/Guayaquil`.
+- El servidor corre en `debug=True` en `server.py`. Para producción, desactivar debug y usar un servidor WSGI apropiado.
 
-## 🐛 Solución de Problemas
+## 🐛 Problemas conocidos y recomendaciones
 
-### Error: "Cannot connect to MongoDB"
-- Verifica que MongoDB esté corriendo
-- Revisa la URI de conexión en `MONGO_URI`
-- Si usas MongoDB Atlas, verifica que tu IP esté en la whitelist
+1. **Join anónimo inalcanzable**: `server.py` contiene lógica para permitir joins anónimos (inserta usuarios con `is_anonymous`) pero el handler `ws_join` retorna un error si `token` no está presente antes de esa lógica. Resultado: el flujo anónimo actualmente no se ejecuta.
+   - Recomendación: decidir si se quiere soporte de joins anónimos y reordenar la lógica del handler `join` para permitir la rama anónima (p. ej. si `room_id` + `pin` + `nickname` están presentes, hacer el flujo anónimo; si `token` está presente, validar token normal).
 
-### Error: "Port 5000 already in use"
-- Cambia el puerto en `server.py` (línea 326): `socketio.run(app, debug=True, host="0.0.0.0", port=5001)`
-- O cierra el proceso que está usando el puerto 5000
+2. **Credenciales hardcodeadas de Cloudinary**: `CLOUDINARY_*` están definidas en `server.py`. Esto es inseguro. Moverlas a variables de entorno y cargar con `os.getenv(...)`.
 
-### Error: "ImportError: cannot import name 'url_quote' from 'werkzeug.urls'"
-Este error ocurre por incompatibilidad entre Flask 2.2.3 y Werkzeug 3.0+. Solución:
+3. **Dependencia en `eventlet`**: `SocketIO` se inicia con `async_mode='eventlet'`. Asegúrate de tener `eventlet` instalado y usarlo en producción si se mantiene esa configuración.
 
-```bash
-# Desinstala las dependencias actuales
-pip uninstall -y flask werkzeug
+4. **Validaciones y mensajes de error**: añadir más validaciones y códigos estandarizados (p. ej. `code` en eventos de error) mejora la interoperabilidad del cliente.
 
-# Reinstala con las versiones correctas
-pip install -r requirements.txt
+5. **Limpieza de sockets**: `disconnect` borra usuarios anónimos y limpia `socket_id` para usuarios registrados; revisar que no quede estado inconsistente si un cliente reconecta.
+
+### Fragmento de fix sugerido para `join` anónimo (ejemplo conceptual)
+```python
+# Pseudocódigo: comprobar si payload contiene room_id/pin/nickname -> flujo anon
+# else: intentar validar token -> flujo autenticado
 ```
 
-O manualmente:
-```bash
-pip install werkzeug==2.2.3
-```
+Si quieres, puedo aplicar un parche a `server.py` para:
+- mover las credenciales a `os.getenv(...)`;
+- arreglar el flujo de `ws_join` para soportar joins anónimos correctamente;
+- añadir logs y mensajes de error consistentes.
 
-### Error al instalar dependencias
-- Asegúrate de estar usando Python 3.8+
-- Actualiza pip: `python -m pip install --upgrade pip`
-- Si tienes problemas de compatibilidad, reinstala todas las dependencias:
-  ```bash
-  pip uninstall -r requirements.txt -y
-  pip install -r requirements.txt
-  ```
+## 🧰 Solución de Problemas (resumen)
+
+- **Cannot connect to MongoDB**: verifica MongoDB y `MONGO_URI`.
+- **Port 5000 ocupado**: cambia el puerto en `server.py` o libera el puerto.
+- **ImportError url_quote**: incompatibilidad `Werkzeug`. Si ocurre, instala `werkzeug==2.2.3` o usa el `requirements.txt` correcto.
 
 ## 📚 Estructura del Proyecto
 
@@ -355,12 +232,11 @@ backend/
 ├── server.py          # Servidor principal Flask + SocketIO
 ├── client.html        # Cliente de prueba HTML/JavaScript
 ├── requirements.txt   # Dependencias del proyecto
-└── README.md         # Esta documentación
+└── README-back.md     # Esta documentación (actualizada)
 ```
 
 ## 👥 Contribuir
 
-Para contribuir al proyecto:
 1. Fork el repositorio
 2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
 3. Commit tus cambios (`git commit -m 'Agrega nueva funcionalidad'`)
@@ -369,4 +245,4 @@ Para contribuir al proyecto:
 
 ## 📄 Licencia
 
-[Especificar licencia si aplica]
+Especificar licencia si aplica.
