@@ -3,7 +3,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Send, Image as ImageIcon, FileText, X, Download } from "lucide-react";
+import { ArrowLeft, Send, Image as ImageIcon, FileText, X, Download, ExternalLink } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 
@@ -67,8 +67,12 @@ const ChatRoom = () => {
             id: m._id && m._id.$oid ? m._id.$oid : String(idx),
             user: m.username || "",
             text: m.msg || "",
-            image: m.image || undefined,
-            file: m.file || undefined,
+            image: m.file_url && m.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? m.file_url : undefined,
+            file: m.file_url && !m.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? {
+              name: m.original_filename || "archivo",
+              data: m.file_url,
+              type: "url"
+            } : undefined,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
             isOwn: (m.username || "") === (localStorage.getItem("chat_user") || "You")
           }));
@@ -90,8 +94,12 @@ const ChatRoom = () => {
             id: Date.now().toString(),
             user: d.username || "",
             text: d.msg || "",
-            image: d.image || undefined,
-            file: d.file || undefined,
+            image: d.file_url && d.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? d.file_url : undefined,
+            file: d.file_url && !d.file_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? {
+              name: d.original_filename || "archivo",
+              data: d.file_url,
+              type: "url"
+            } : undefined,
             timestamp: d.timestamp ? new Date(d.timestamp) : new Date(),
             isOwn: (d.username || "") === (localStorage.getItem("chat_user") || "You")
           };
@@ -220,43 +228,108 @@ const ChatRoom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (inputMessage.trim() || selectedImage || selectedFile) {
-      
-      const room = id ?? "default";
-      const token = localStorage.getItem("chat_token");
-      
-      // emitir al servidor
+    if (!inputMessage.trim() && !selectedImage && !selectedFile) {
+      return;
+    }
+
+    const room = id ?? "default";
+    const token = localStorage.getItem("chat_token");
+    const username = localStorage.getItem("chat_user") || "anonymous";
+
+    try {
+      let fileUrl: string | undefined;
+      let originalFilename: string | undefined;
+
+      // Si hay imagen o archivo, subirlo primero
+      if ((selectedImage || selectedFile) && roomType === "multimedia") {
+        const { apiUrl } = await import("@/lib/socket");
+
+        if (selectedImage) {
+          // Convertir base64 a blob
+          const response = await fetch(selectedImage);
+          const blob = await response.blob();
+          const formData = new FormData();
+          formData.append("file", blob, "image.png");
+          formData.append("username", username);
+
+          const uploadResp = await fetch(`${apiUrl}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (uploadResp.ok) {
+            const uploadData = await uploadResp.json();
+            fileUrl = uploadData.url;
+            originalFilename = uploadData.filename;
+          } else {
+            toast({
+              title: "Error al subir imagen",
+              description: "No se pudo subir la imagen a Cloudinary",
+              variant: "destructive",
+            });
+            return;
+          }
+        } else if (selectedFile) {
+          // Convertir base64 a blob
+          const response = await fetch(selectedFile.data);
+          const blob = await response.blob();
+          const formData = new FormData();
+          formData.append("file", blob, selectedFile.name);
+          formData.append("username", username);
+
+          const uploadResp = await fetch(`${apiUrl}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (uploadResp.ok) {
+            const uploadData = await uploadResp.json();
+            fileUrl = uploadData.url;
+            originalFilename = uploadData.filename;
+          } else {
+            toast({
+              title: "Error al subir archivo",
+              description: "No se pudo subir el archivo a Cloudinary",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+      }
+
+      // Emitir el mensaje con la URL del archivo
       import("@/lib/socket").then(({ getSocket }) => {
         const s = getSocket();
         try {
-          s?.emit("send_message", { 
-            token: token, 
-            room: room, 
+          s?.emit("send_message", {
+            token: token,
+            room: room,
             msg: inputMessage,
-            image: selectedImage || undefined,
-            file: selectedFile || undefined
+            file_url: fileUrl,
+            original_filename: originalFilename,
           });
-        } catch (e) {
-          // si no hay socket, mostrar localmente
-          const newMessage: Message = {
-            id: Date.now().toString(),
-            user: "You",
-            text: inputMessage,
-            image: selectedImage || undefined,
-            file: selectedFile || undefined,
-            timestamp: new Date(),
-            isOwn: true,
-          };
-          setMessages((prev) => [...prev, newMessage]);
+        } catch (error) {
+          toast({
+            title: "Error al enviar mensaje",
+            description: "No se pudo enviar el mensaje",
+            variant: "destructive",
+          });
         }
       });
 
       setInputMessage("");
       removeSelectedImage();
       removeSelectedFile();
+    } catch (error) {
+      console.error("Error en handleSendMessage:", error);
+      toast({
+        title: "Error",
+        description: "Ocurrió un error al enviar el mensaje",
+        variant: "destructive",
+      });
     }
   };
 
@@ -335,13 +408,40 @@ const ChatRoom = () => {
     }
   };
 
-  const downloadFile = (fileData: string, fileName: string) => {
-    const link = document.createElement("a");
-    link.href = fileData;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const downloadFile = (fileUrl: string, fileName: string) => {
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+      // Usar el proxy del backend para evitar CORS
+      const backendUrl = (import.meta.env.VITE_API_URL as string) || "http://localhost:5000";
+      const proxyUrl = `${backendUrl}/download?url=${encodeURIComponent(fileUrl)}&filename=${encodeURIComponent(fileName)}`;
+      
+      console.log("[download] Proxy URL:", proxyUrl);
+      
+      // Descargar a través del proxy
+      const link = document.createElement("a");
+      link.href = proxyUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Descargando...",
+        description: `${fileName} se está descargando`,
+      });
+    } else {
+      // Para datos base64
+      const link = document.createElement("a");
+      link.href = fileUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast({
+        title: "Archivo descargado",
+        description: `${fileName} se descargó correctamente`,
+      });
+    }
   };
 
   return (
@@ -446,16 +546,47 @@ const ChatRoom = () => {
                 )}
                 <div className={`px-4 py-3 ${message.isOwn ? "chat-bubble-user" : "chat-bubble-other"}`}>
                   {message.image && roomType === "multimedia" && (
-                    <img src={message.image} alt="Imagen compartida" className="max-w-xs rounded-lg mb-2" />
+                    <div className="mb-2 relative group">
+                      <img src={message.image} alt="Imagen compartida" className="max-w-xs rounded-lg cursor-pointer hover:opacity-80 transition" onClick={() => window.open(message.image, '_blank')} />
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1">
+                        <Button
+                          size="sm"
+                          className="h-8 w-8 p-0 bg-black/60 hover:bg-black/80"
+                          onClick={() => window.open(message.image, '_blank')}
+                          title="Abrir en nueva pestaña"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 w-8 p-0 bg-black/60 hover:bg-black/80"
+                          onClick={() => downloadFile(message.image!, `imagen-${Date.now()}.png`)}
+                          title="Descargar imagen"
+                        >
+                          <Download className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
                   )}
                   {message.file && roomType === "multimedia" && (
-                    <div className="flex items-center gap-2 mb-2 bg-secondary/20 p-2 rounded">
+                    <div className="flex items-center gap-2 mb-2 bg-secondary/20 p-2 rounded hover:bg-secondary/30 transition">
                       <FileText className="w-4 h-4 flex-shrink-0" />
-                      <span className="text-sm truncate flex-1">{message.file.name}</span>
+                      <span className="text-sm truncate flex-1 cursor-pointer" onClick={() => window.open(message.file!.data, '_blank')} title="Click para abrir en nueva pestaña">
+                        {message.file.name}
+                      </span>
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="p-1 h-6 w-6"
+                        className="p-1 h-6 w-6 hover:bg-primary/20"
+                        onClick={() => window.open(message.file!.data, '_blank')}
+                        title="Abrir en nueva pestaña"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="p-1 h-6 w-6 hover:bg-primary/20"
                         onClick={() => downloadFile(message.file!.data, message.file!.name)}
                         title="Descargar archivo"
                       >

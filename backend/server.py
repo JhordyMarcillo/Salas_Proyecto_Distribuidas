@@ -6,15 +6,19 @@ import jwt
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+from cloudinary.utils import cloudinary_url
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS, cross_origin
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from pymongo import ReturnDocument
+import requests
+from io import BytesIO
+from time import time
 
 CLOUDINARY_CLOUD_NAME = "dsfazlofc"
 CLOUDINARY_API_KEY = "375549546746736"
@@ -558,6 +562,7 @@ def upload_file():
         )
         public_url = upload_result.get('secure_url') or upload_result.get('url')
         original_filename = upload_result.get('original_filename', file_to_upload.filename)
+        
         print(f"[upload] {username} subió {original_filename} a Cloudinary: {public_url}")
         return jsonify({
             "msg": "Archivo subido exitosamente a Cloudinary",
@@ -567,6 +572,124 @@ def upload_file():
     except Exception as e:
         print(f"[upload error] {e}")
         return jsonify({"msg": f"Error al subir: {str(e)}"}), 500
+
+@app.route('/download', methods=['GET', 'OPTIONS'])
+@cross_origin(origins="*")
+def download_file():
+    """Proxy para descargar archivos desde Cloudinary sin problemas de CORS"""
+    # Log de todos los parámetros recibidos
+    print(f"[download] Query params completos: {request.args}")
+    print(f"[download] URL completa: {request.url}")
+    
+    file_url = request.args.get('url')
+    filename = request.args.get('filename', 'archivo')
+    
+    print(f"[download] Solicitud recibida - URL: {file_url}, Filename: {filename}")
+    
+    if not file_url:
+        print("[download] Error: URL requerida - URL está vacía o None")
+        print(f"[download] file_url type: {type(file_url)}, value: '{file_url}'")
+        return jsonify({"msg": "URL requerida"}), 400
+    
+    try:
+        # Si es URL de Cloudinary, generar URL con tiempo de expiración largo
+        if 'cloudinary.com' in file_url:
+            try:
+                # Extraer el public_id de la URL
+                # Ejemplo: https://res.cloudinary.com/dsfazlofc/image/upload/v1763429286/chat_uploads/dylan/w4x2etkq4t2qthbwlreg.pdf
+                # El public_id sería: chat_uploads/dylan/w4x2etkq4t2qthbwlreg
+                
+                if '/upload/' in file_url:
+                    # Extraer el path después de /upload/
+                    parts = file_url.split('/upload/')
+                    if len(parts) == 2:
+                        upload_path = parts[1]
+                        # Remover versión si existe (v123456/)
+                        if upload_path.startswith('v'):
+                            # Buscar el siguiente /
+                            slash_idx = upload_path.find('/')
+                            if slash_idx != -1:
+                                upload_path = upload_path[slash_idx+1:]
+                        
+                        # Remover extensión si está incluida en el path
+                        if '.' in upload_path:
+                            public_id = upload_path.rsplit('.', 1)[0]
+                        else:
+                            public_id = upload_path
+                        
+                        # Generar URL firmada con expiración de 1 hora
+                        expiration = int(time()) + 3600
+                        
+                        signed_url, _ = cloudinary_url(
+                            public_id,
+                            secure=True,
+                            sign_url=True,
+                            type='upload',
+                            resource_type='auto'
+                        )
+                        
+                        file_url = signed_url
+                        print(f"[download] URL firmada generada: {public_id}")
+            except Exception as e:
+                print(f"[download] Error generando URL firmada: {e}")
+                # Continuar con la URL original si falla
+        
+        print(f"[download] Descargando desde: {file_url[:80]}...")
+        
+        # Descargar el archivo desde Cloudinary
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+        }
+        
+        response = requests.get(file_url, timeout=30, headers=headers, allow_redirects=True)
+        
+        print(f"[download] Response status: {response.status_code}")
+        
+        if response.status_code == 401:
+            # Intenta con la URL original sin firma
+            print(f"[download] 401 con URL firmada, intentando sin firma")
+            response = requests.get(request.args.get('url'), timeout=30, headers=headers, allow_redirects=True)
+            print(f"[download] Segunda intenta status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"[download error] Status {response.status_code} - {response.text[:200]}")
+            return jsonify({"msg": f"Error: status {response.status_code}"}), response.status_code
+        
+        if not response.content:
+            print(f"[download error] Respuesta vacía")
+            return jsonify({"msg": "Error: respuesta vacía del servidor"}), 500
+        
+        # Obtener tipo MIME
+        content_type = response.headers.get('Content-Type', 'application/octet-stream')
+        if not content_type or 'text/html' in content_type:
+            if filename.lower().endswith('.pdf'):
+                content_type = 'application/pdf'
+            elif filename.lower().endswith('.png'):
+                content_type = 'image/png'
+            elif filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif filename.lower().endswith('.gif'):
+                content_type = 'image/gif'
+            else:
+                content_type = 'application/octet-stream'
+        
+        print(f"[download] Sirviendo {filename} ({len(response.content)} bytes) como {content_type}")
+        
+        return send_file(
+            BytesIO(response.content),
+            download_name=filename,
+            as_attachment=True,
+            mimetype=content_type
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"[download error] Request failed: {e}")
+        return jsonify({"msg": f"Error de conexión: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[download error] {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"msg": f"Error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     socketio.run(app, debug=True, host="0.0.0.0", port=5000)
