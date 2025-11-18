@@ -5,33 +5,7 @@ Prueba registro, login, verificación de tokens
 
 import pytest
 import json
-from app import create_app
 from app.utils.database import mongo
-
-
-@pytest.fixture
-def app():
-    """Crea una app con configuración de testing"""
-    app = create_app('testing')
-    
-    with app.app_context():
-        # Limpiar la base de datos antes de cada test
-        mongo.db.users.delete_many({})
-        mongo.db.rooms.delete_many({})
-        mongo.db.messages.delete_many({})
-        
-        yield app
-        
-        # Limpiar después de cada test
-        mongo.db.users.delete_many({})
-        mongo.db.rooms.delete_many({})
-        mongo.db.messages.delete_many({})
-
-
-@pytest.fixture
-def client(app):
-    """Cliente para hacer requests HTTP"""
-    return app.test_client()
 
 
 class TestRegister:

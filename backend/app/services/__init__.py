@@ -18,12 +18,14 @@ Diferencia entre Models y Services:
 from app.services.jwt_service import JWTService
 from app.services.cloudinary_service import CloudinaryService
 from app.services.room_service import RoomService
+from app.services.security_service import SecurityService
 
 # Exportar todos los servicios
 __all__ = [
     'JWTService',
     'CloudinaryService',
-    'RoomService'
+    'RoomService',
+    'SecurityService'
 ]
 
 
@@ -76,6 +78,29 @@ Ejemplo:
     
     can_join, error = RoomService.validate_join_request(
         'admin', 'General', '1234'
+    )
+
+
+🔒 SecurityService
+------------------
+Cuando necesites:
+- Detectar encriptación en mensajes
+- Validar archivos con esteganografía (OpenStego)
+- Escanear patrones maliciosos
+- Validar seguridad completa de mensajes con archivos
+
+Ejemplo:
+    from app.services import SecurityService
+    
+    # Detectar encriptación
+    encryption = SecurityService.detect_encryption_in_text(message)
+    
+    # Verificar archivo
+    stego = SecurityService.check_file_steganography('image.png')
+    
+    # Validación completa
+    security = SecurityService.validate_message_security(
+        message_text, file_info
     )
 
 

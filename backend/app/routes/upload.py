@@ -7,7 +7,7 @@ Maneja uploads a Cloudinary
 from flask import Blueprint, request, jsonify
 from flask_cors import cross_origin
 from app.middleware import require_jwt_http
-from app.services import CloudinaryService
+from app.services import CloudinaryService, SecurityService
 
 # Crear Blueprint
 upload_bp = Blueprint('upload', __name__, url_prefix='/upload')
@@ -61,6 +61,25 @@ def upload_file(username):
     if not valid_type:
         return jsonify({'error': type_error}), 400
     
+    # 4.5. Validar seguridad del archivo (esteganografía, encriptación)
+    # Leer datos del archivo para análisis de seguridad
+    file_to_upload.seek(0)
+    file_data = file_to_upload.read()
+    file_to_upload.seek(0)  # Resetear para upload posterior
+    
+    security_check = SecurityService.check_file_steganography(
+        file_to_upload.filename,
+        file_data=file_data
+    )
+    
+    # Si el riesgo es alto, rechazar o advertir
+    if security_check['risk_level'] == 'high':
+        return jsonify({
+            'error': 'Archivo rechazado por riesgos de seguridad',
+            'details': security_check['openstego_indicators'],
+            'risk_level': security_check['risk_level']
+        }), 403
+    
     # 5. Validar tamaño del archivo
     max_mb = 10  # Default
     
@@ -84,13 +103,19 @@ def upload_file(username):
         
         print(f"[upload] {username} subió {result['filename']} ({size_mb}MB)")
         
+        # Incluir información de seguridad en respuesta
         return jsonify({
             'msg': 'Archivo subido exitosamente',
             'url': result['url'],
             'filename': result['filename'],
             'public_id': result['public_id'],
             'format': result['format'],
-            'size_mb': size_mb
+            'size_mb': size_mb,
+            'security_check': {
+                'risk_level': security_check['risk_level'],
+                'has_steganography_risk': security_check['has_steganography_risk'],
+                'openstego_indicators': security_check['openstego_indicators']
+            }
         }), 201
         
     except Exception as e:

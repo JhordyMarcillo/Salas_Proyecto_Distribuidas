@@ -11,3 +11,7 @@ pytz
 tzdata
 cloudinary
 python-dotenv
+pytest
+pytest-flask
+pytest-asyncio
+pytest-cov

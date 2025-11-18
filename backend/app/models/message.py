@@ -20,7 +20,8 @@ class MessageModel:
         self.messages = mongo.db.messages
     
     def create_message(self, room, username, msg='', 
-                      nickname=None, file_url=None, original_filename=None):
+                      nickname=None, file_url=None, original_filename=None,
+                      security_flags=None):
         """
         Crea un nuevo mensaje en la base de datos
         
@@ -31,6 +32,15 @@ class MessageModel:
             nickname (str): Nickname (para usuarios anónimos)
             file_url (str): URL del archivo adjunto (opcional)
             original_filename (str): Nombre original del archivo (opcional)
+            security_flags (dict): Indicadores de seguridad (opcional)
+                {
+                    'has_encryption': bool,
+                    'has_steganography_risk': bool,
+                    'has_malicious_patterns': bool,
+                    'has_suspicious_content': bool,
+                    'risk_level': str,
+                    'issues': list
+                }
         
         Returns:
             dict: Documento del mensaje creado
@@ -42,7 +52,15 @@ class MessageModel:
             "msg": msg,
             "timestamp": datetime.now(ZoneInfo('America/Guayaquil')),
             "file_url": file_url,
-            "original_filename": original_filename
+            "original_filename": original_filename,
+            "security_flags": security_flags or {
+                'has_encryption': False,
+                'has_steganography_risk': False,
+                'has_malicious_patterns': False,
+                'has_suspicious_content': False,
+                'risk_level': 'low',
+                'issues': []
+            }
         }
         
         self.messages.insert_one(message_doc)
@@ -187,7 +205,15 @@ class MessageModel:
             "msg": message_doc.get("msg"),
             "timestamp": timestamp_iso,
             "file_url": message_doc.get("file_url"),
-            "original_filename": message_doc.get("original_filename")
+            "original_filename": message_doc.get("original_filename"),
+            "security_flags": message_doc.get("security_flags", {
+                'has_encryption': False,
+                'has_steganography_risk': False,
+                'has_malicious_patterns': False,
+                'has_suspicious_content': False,
+                'risk_level': 'low',
+                'issues': []
+            })
         }
     
     def format_messages_for_api(self, messages):
@@ -213,7 +239,15 @@ class MessageModel:
                 "msg": msg.get("msg"),
                 "timestamp": ts_iso,
                 "file_url": msg.get("file_url"),
-                "original_filename": msg.get("original_filename")
+                "original_filename": msg.get("original_filename"),
+                "security_flags": msg.get("security_flags", {
+                    'has_encryption': False,
+                    'has_steganography_risk': False,
+                    'has_malicious_patterns': False,
+                    'has_suspicious_content': False,
+                    'risk_level': 'low',
+                    'issues': []
+                })
             })
         
         return formatted
