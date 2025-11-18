@@ -10,8 +10,10 @@ eventlet
 pytz
 tzdata
 cloudinary
+requests
 python-dotenv
 pytest
 pytest-flask
 pytest-asyncio
 pytest-cov
+
