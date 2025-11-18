@@ -162,7 +162,9 @@ class SecurityService:
             result['openstego_indicators'].append(
                 f"Extensión '{extension}' es indicador de OpenStego"
             )
-            result['risk_level'] = 'high'
+            # Solo marcar como high risk si hay otros indicadores sospechosos
+            # Los archivos normales PNG/BMP/WAV no deberían ser rechazados
+            # result['risk_level'] = 'high'  # Comentado: demasiado restrictivo
         
         # 3. Análisis de datos si se proporciona
         if file_data:

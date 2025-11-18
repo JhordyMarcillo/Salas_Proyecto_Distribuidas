@@ -257,6 +257,9 @@ const ChatRoom = () => {
 
           const uploadResp = await fetch(`${apiUrl}/upload`, {
             method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+            },
             body: formData,
           });
 
@@ -282,6 +285,9 @@ const ChatRoom = () => {
 
           const uploadResp = await fetch(`${apiUrl}/upload`, {
             method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+            },
             body: formData,
           });
 

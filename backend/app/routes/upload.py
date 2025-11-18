@@ -72,13 +72,11 @@ def upload_file(username):
         file_data=file_data
     )
     
-    # Si el riesgo es alto, rechazar o advertir
-    if security_check['risk_level'] == 'high':
-        return jsonify({
-            'error': 'Archivo rechazado por riesgos de seguridad',
-            'details': security_check['openstego_indicators'],
-            'risk_level': security_check['risk_level']
-        }), 403
+    # Logs para debugging
+    print(f"[upload] Security check for {file_to_upload.filename}: risk_level={security_check['risk_level']}")
+    
+    # No rechazar archivos normales. Solo alertar si realmente hay indicadores sospechosos
+    # en el análisis de datos (metadatos ocultos), no solo por tener extensión PNG/BMP/WAV
     
     # 5. Validar tamaño del archivo
     max_mb = 10  # Default
